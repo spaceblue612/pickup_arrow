@@ -1,0 +1,7 @@
+route: design_delta
+scope_authorization: confirmed
+groups:
+  - id: EG-DEPENDENCY-ANALYZER-004
+    status: qa_passed
+next_action: sprint_completed
+sprint_status: completed

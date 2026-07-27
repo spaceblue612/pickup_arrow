@@ -1,0 +1,9 @@
+route: design_delta
+scope_authorization: confirmed
+groups:
+  - id: EG-DEPENDENCY-TARGETING-005
+    status: qa_passed
+  - id: EG-LARGE-BOARD-TARGETING-005
+    status: in_progress
+next_action: implement_EG-LARGE-BOARD-TARGETING-005
+sprint_status: active

@@ -1,0 +1,8 @@
+route: design_delta
+scope_authorization: confirmed
+groups:
+  - id: EG-SHAPE-RULE-001
+    status: qa_passed
+  - id: EG-RUNTIME-002
+    status: qa_passed
+next_action: await_closeout_request

@@ -1,0 +1,56 @@
+design_id: pickup-arrow-current
+updated_at: 2026-07-27
+platform: mobile_touch
+technology:
+  engine: Godot 4.7
+  language: GDScript
+gameplay:
+  grid: 9x9
+  directions: [UP, DOWN, LEFT, RIGHT]
+  arrow_shape: "화살은 화살촉 칸부터 이어지는 스테이지별 길이 범위의 중복 없는 상하좌우 연결 몸통 칸으로 구성되며 꺾일 수 있다."
+  extraction: "화살촉은 지정 방향의 직선 경로로 이동하고 각 후위 몸통은 선행 몸통이 지나간 경로를 같은 속도로 따라가며, 마지막 몸통이 화면 밖으로 나간 뒤 제거된다."
+  path_collision: "화살촉 진행 1라인에 다른 화살 또는 자기 몸통이 있으면 이동할 수 없고, 라인 밖의 몸통은 차단하지 않는다."
+  extraction_speed_pixels_per_second: 1600.0
+  blocked_selection: "막힌 선택은 보드 상태를 유지하고 막힘 피드백을 표시한다."
+  clear_condition: "남은 화살이 없으면 보드가 완료된다."
+  progression: "STAGE-001부터 STAGE-003까지 순서대로 진행하고 STAGE-003 완료 후 prototype-complete 상태가 된다."
+generation:
+  length_ranges:
+    STAGE-001: [1, 6]
+    STAGE-002: [3, 10]
+    STAGE-003: [5, 14]
+  target_empty_ratios:
+    STAGE-001: 0.70
+    STAGE-002: 0.55
+    STAGE-003: 0.40
+  filler_max_length: 3
+  deterministic_seed: true
+  validity: "몸통이 겹치지 않고 자기 몸통이 화살촉 진행선을 막지 않으며 모든 화살을 제거할 수 있는 해결 순서가 존재해야 한다."
+  metrics: "목표·실제 빈칸 비율, 기본·보충 화살 수와 의존 분석 결과를 생성 스테이지에서 제공한다."
+dependency_analysis:
+  graph_direction: "blocker → blocked"
+  deterministic_simulation: "남은 배열 순서에서 첫 추출 가능 화살을 제거한다."
+  metrics:
+    - dependency_depth
+    - initial_extractable_ratio
+    - forced_state_ratio
+    - average_choice_count
+    - has_complete_solution
+  application: "현재는 측정·출력만 하며 생성 후보의 채택 여부를 변경하지 않는다."
+systems:
+  - SYS-STAGE-CATALOG
+  - SYS-PATH-RULE
+  - SYS-BOARD-STATE
+  - SYS-TOUCH-FEEDBACK
+  - SYS-ARROW-PLACEMENT
+  - SYS-DEPENDENCY-ANALYZER
+content:
+  stages: [STAGE-001, STAGE-002, STAGE-003]
+  generation: "각 스테이지는 고정 seed, 기본 화살 수, 길이 범위, 목표 빈칸 비율로 재현 가능한 보드를 생성한다."
+deferred: [DEFER-001, DEFER-002, DEFER-003, DEFER-004, DEFER-005, BALANCE-DEPENDENCY-TARGETING-005]
+verification:
+  automated: passed
+  mobile_manual: passed
+refs:
+  - ../sprints/dependency-difficulty-004/06-qa-handoff.md
+  - ../sprints/dependency-difficulty-004/08-sprint-closeout.yaml

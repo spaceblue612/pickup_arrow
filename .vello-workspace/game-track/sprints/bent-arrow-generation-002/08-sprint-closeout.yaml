@@ -1,0 +1,35 @@
+sprint_id: bent-arrow-generation-002
+closed_at: 2026-07-26
+status: completed
+delivered:
+  - "CORE-BENT-ARROW-001: 1~20칸의 꺾인 연결 몸통과 화살촉 방향"
+  - "CORE-BODY-COLLISION-001: 전체 몸통 이동 경로 충돌 판정"
+  - "SYS-ARROW-PLACEMENT: seed 기반 비중복·해결 가능 배치"
+  - "SYS-TOUCH-FEEDBACK: 몸통 선택, 꺾인 표시, 전체 모양 추출"
+  - "QA-BENT-001..002, QA-RUNTIME-003, USER-VISUAL-001: 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "NEW-SPRINT-002: 다음 기능 범위 선택"
+  blockers: []
+  decisions_needed: []
+  deferred_items: [DEFER-001, DEFER-002, DEFER-003, DEFER-004, DEFER-005]
+  risks:
+    - "RISK-OPENGL-X11-001: X11/OpenGL 창 생성 오류가 일시적으로 발생할 수 있으며 Vulkan 실행 경로로 우회 가능"
+change_events:
+  - "CORE-BENT-ARROW-001: active"
+  - "CORE-BODY-COLLISION-001: active"
+  - "SYS-ARROW-PLACEMENT: active"
+  - "SYS-STAGE-CATALOG: updated"
+  - "SYS-PATH-RULE: updated"
+  - "SYS-BOARD-STATE: updated"
+  - "SYS-TOUCH-FEEDBACK: updated"
+  - "CONTENT-STAGES-001-003: updated"
+sot_updates:
+  project_state: [project-state.yaml, sprint-index.yaml]
+  current_design: [current-design/current-design.yaml]
+  entity_ledger: [entity-ledger.yaml]
+refs:
+  - "06-qa-handoff.md"
+  - "05-implementation-handoff.md"
+  - "../../current-design/current-design.yaml"

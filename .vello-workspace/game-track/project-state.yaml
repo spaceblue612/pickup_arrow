@@ -1,0 +1,5 @@
+project_id: pickup-arrow
+status: active
+current_sprint: dependency-targeting-005
+current_sprint_status: active
+next_action: implement_EG-LARGE-BOARD-TARGETING-005

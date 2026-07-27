@@ -1,0 +1,50 @@
+entities:
+  - id: GAME-001
+    type: game
+    status: active
+  - id: CORE-001
+    type: gameplay_rule
+    status: active
+  - id: SYS-STAGE-CATALOG
+    type: system
+    status: active
+  - id: SYS-PATH-RULE
+    type: system
+    status: active
+  - id: SYS-BOARD-STATE
+    type: system
+    status: active
+  - id: SYS-TOUCH-FEEDBACK
+    type: system
+    status: active
+  - id: CONTENT-STAGES-001-003
+    type: content
+    status: active
+  - id: CORE-BENT-ARROW-001
+    type: gameplay_rule
+    status: active
+  - id: CORE-BODY-COLLISION-001
+    type: gameplay_rule
+    status: superseded
+    superseded_by: CORE-HEAD-RAY-COLLISION-004
+  - id: SYS-ARROW-PLACEMENT
+    type: system
+    status: active
+  - id: CORE-SNAKE-EXTRACTION-004
+    type: gameplay_rule
+    status: active
+  - id: CORE-HEAD-RAY-COLLISION-004
+    type: gameplay_rule
+    status: active
+  - id: BALANCE-GENERATION-PROFILE-003
+    type: balance
+    status: active
+  - id: ADVANCED-DEPENDENCY-DIFFICULTY-004
+    type: feature
+    status: active
+  - id: SYS-DEPENDENCY-ANALYZER
+    type: system
+    status: active
+  - id: BALANCE-DEPENDENCY-TARGETING-005
+    type: balance
+    status: deferred

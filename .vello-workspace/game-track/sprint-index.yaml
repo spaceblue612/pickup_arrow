@@ -1,0 +1,23 @@
+sprints:
+  - id: arrow-puzzle-prototype-001
+    status: completed
+    closed_at: 2026-07-24
+    closeout: sprints/arrow-puzzle-prototype-001/08-sprint-closeout.yaml
+  - id: bent-arrow-generation-002
+    status: completed
+    started_at: 2026-07-26
+    closed_at: 2026-07-26
+    closeout: sprints/bent-arrow-generation-002/08-sprint-closeout.yaml
+  - id: arrow-balance-motion-003
+    status: completed
+    started_at: 2026-07-26
+    closed_at: 2026-07-26
+    closeout: sprints/arrow-balance-motion-003/08-sprint-closeout.yaml
+  - id: dependency-difficulty-004
+    status: completed
+    started_at: 2026-07-26
+    closed_at: 2026-07-27
+    closeout: sprints/dependency-difficulty-004/08-sprint-closeout.yaml
+  - id: dependency-targeting-005
+    status: active
+    started_at: 2026-07-27

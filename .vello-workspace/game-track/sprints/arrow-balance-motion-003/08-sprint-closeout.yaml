@@ -1,0 +1,37 @@
+sprint_id: arrow-balance-motion-003
+closed_at: 2026-07-26
+status: completed
+delivered:
+  - "CORE-SNAKE-EXTRACTION-004: 화살촉 선행과 후위 몸통 경로 추종 추출"
+  - "CORE-HEAD-RAY-COLLISION-004: 화살촉 진행 1라인의 다른 화살·자기 몸통 차단 판정"
+  - "BALANCE-GENERATION-PROFILE-003: 스테이지별 길이 범위·목표 빈칸 비율·짧은 보충 화살"
+  - "SYS-TOUCH-FEEDBACK: 조절 가능한 등속 추출과 마지막 몸통 이탈 후 제거"
+  - "QA-SNAKE-004, QA-BALANCE-003, USER-SNAKE-MOTION-004: 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "ADVANCED-DEPENDENCY-DIFFICULTY-004: 01-brainstorm-handoff.md를 입력으로 다음 스프린트 design 시작"
+  blockers: []
+  decisions_needed:
+    - "DESIGN-DEPENDENCY-004: 후보 A MVP 지표와 난이도별 목표 허용 범위"
+  deferred_items:
+    - "ADVANCED-DEPENDENCY-DIFFICULTY-004: 지역·단위별 맞물림 및 연쇄 의존성 수치화"
+  risks:
+    - "높은 점유율과 좁은 허용 오차는 무작위 생성 재시도 비용을 증가시킬 수 있음"
+change_events:
+  - "CORE-SNAKE-EXTRACTION-004: active"
+  - "CORE-HEAD-RAY-COLLISION-004: active"
+  - "CORE-BODY-COLLISION-001: superseded"
+  - "BALANCE-GENERATION-PROFILE-003: active"
+  - "SYS-PATH-RULE: updated"
+  - "SYS-TOUCH-FEEDBACK: updated"
+  - "SYS-ARROW-PLACEMENT: updated"
+  - "SYS-STAGE-CATALOG: updated"
+sot_updates:
+  project_state: [project-state.yaml, sprint-index.yaml]
+  current_design: [current-design/current-design.yaml]
+  entity_ledger: [entity-ledger.yaml]
+refs:
+  - "06-qa-handoff.md"
+  - "05-implementation-handoff.md"
+  - "01-brainstorm-handoff.md"

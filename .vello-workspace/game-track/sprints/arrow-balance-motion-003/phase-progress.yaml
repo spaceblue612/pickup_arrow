@@ -1,0 +1,11 @@
+route: design_delta
+scope_authorization: confirmed
+groups:
+  - id: EG-PATH-MOTION-003
+    status: superseded_by_EG-SNAKE-EXTRACTION-004
+  - id: EG-BALANCE-PROFILE-003
+    status: qa_passed
+  - id: EG-SNAKE-EXTRACTION-004
+    status: user_check_passed
+next_action: sprint_completed
+sprint_status: completed

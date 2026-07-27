@@ -1,0 +1,35 @@
+sprint_id: dependency-difficulty-004
+closed_at: 2026-07-27
+status: completed
+delivered:
+  - "SYS-DEPENDENCY-ANALYZER: blocker → blocked 의존 그래프와 결정적 해결 시뮬레이션"
+  - "ADVANCED-DEPENDENCY-DIFFICULTY-004: 의존 깊이·초기 추출 가능 비율·강제 상태 비율·평균 선택지 측정"
+  - "SYS-STAGE-CATALOG: 생성 스테이지의 dependency_analysis 출력"
+  - "QA-DEPENDENCY-004: 고정 연쇄·순환·현재 세 스테이지 및 전체 회귀 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "BALANCE-DEPENDENCY-TARGETING-005를 범위로 다음 스프린트 시작"
+    - "스테이지별 목표 지표 범위와 최대 생성 재시도 횟수 확정"
+    - "A 분석 결과로 생성 후보를 선별하고 목표 범위 밖 후보를 재생성"
+  blockers: []
+  decisions_needed:
+    - "STAGE-001~003의 의존 깊이·초기 추출 가능 비율·강제 상태 비율 목표 범위"
+    - "재시도 한도 초과 시 실패 또는 최선 후보 채택 정책"
+  deferred_items:
+    - "BALANCE-DEPENDENCY-TARGETING-005: 목표 난이도 기반 후보 채택·재생성"
+  risks:
+    - "높은 점유율과 좁은 목표 범위는 생성 재시도 비용을 증가시킬 수 있음"
+change_events:
+  - "SYS-DEPENDENCY-ANALYZER: active"
+  - "ADVANCED-DEPENDENCY-DIFFICULTY-004: active"
+  - "SYS-STAGE-CATALOG: updated"
+  - "BALANCE-DEPENDENCY-TARGETING-005: deferred"
+sot_updates:
+  project_state: [project-state.yaml, sprint-index.yaml]
+  current_design: [current-design/current-design.yaml]
+  entity_ledger: [entity-ledger.yaml]
+refs:
+  - "06-qa-handoff.md"
+  - "05-implementation-handoff.md"
+  - "03-system-spec-handoff.md"
