@@ -4,6 +4,6 @@ groups:
   - id: EG-DEPENDENCY-TARGETING-005
     status: qa_passed
   - id: EG-LARGE-BOARD-TARGETING-005
-    status: in_progress
-next_action: implement_EG-LARGE-BOARD-TARGETING-005
+    status: qa_passed
+next_action: await_sprint_closeout_request
 sprint_status: active
