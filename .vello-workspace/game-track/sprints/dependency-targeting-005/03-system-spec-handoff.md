@@ -30,8 +30,11 @@ handoff:
     - "STAGE-001~003에서 모든 목표 min/max와 기존 길이·빈칸·해결 조건 동시 충족"
     - "불가능한 유효 목표에서 max_candidate_attempts만큼 검사 후 오류"
     - "잘못된 min/max·비율·후보 수는 생성 없이 오류"
-  sot_updates_required:
-    - "closeout 시 SYS-DEPENDENCY-TARGETING과 BALANCE-DEPENDENCY-TARGETING-005 활성화"
+  sot_delta_refs:
+    - "SOT-005-DEPENDENCY-TARGET-PROFILES"
+    - "SOT-005-DEPENDENCY-APPLICATION"
+    - "SOT-005-DEPENDENCY-TARGETING-SYSTEM"
+    - "SOT-005-STAGE-CATALOG-OUTPUT"
   refs:
     - "02-design-handoff.md"
     - "../dependency-difficulty-004/08-sprint-closeout.yaml"

@@ -19,5 +19,22 @@ sprints:
     closed_at: 2026-07-27
     closeout: sprints/dependency-difficulty-004/08-sprint-closeout.yaml
   - id: dependency-targeting-005
-    status: active
+    status: completed
     started_at: 2026-07-27
+    closed_at: 2026-08-02
+    closeout: sprints/dependency-targeting-005/08-sprint-closeout.yaml
+  - id: board-foundation-006
+    status: completed
+    started_at: 2026-08-02
+    closed_at: 2026-08-02
+    closeout: sprints/board-foundation-006/08-sprint-closeout.yaml
+  - id: balance-authoring-007
+    status: completed
+    started_at: 2026-08-02
+    closed_at: 2026-08-03
+    closeout: sprints/balance-authoring-007/08-sprint-closeout.yaml
+  - id: map-generation-mode-008
+    status: completed
+    started_at: 2026-08-03
+    closed_at: 2026-08-03
+    closeout: sprints/map-generation-mode-008/08-sprint-closeout.yaml

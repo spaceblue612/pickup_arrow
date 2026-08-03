@@ -1,0 +1,13 @@
+sprint_id: board-foundation-006
+track: game
+route: full
+status: completed
+started_at: 2026-08-02
+closed_at: 2026-08-02
+closeout: 08-sprint-closeout.yaml
+title: "가변 크기·대형 보드 이동·배치 불가 영역"
+scope_authorization: confirmed
+scope:
+  - FEATURE-BOARD-DIMENSIONS-006
+  - FEATURE-BOARD-PAN-006
+  - FEATURE-BOARD-MASK-006

@@ -32,8 +32,11 @@ handoff:
     - "test_stage_catalog.gd, test_dependency_analyzer.gd, test_arrow_placement.gd 영향 회귀 판정=passed"
     - "전체 헤드리스 회귀와 main.tscn 기동 독립 QA 필요"
     - "risk=high; test_dependency_targeting_large_board.gd 독립 QA 판정=passed"
-  sot_updates_required:
-    - "closeout 시 current-design.yaml, entity-ledger.yaml, project-state.yaml 갱신"
+  sot_delta_refs:
+    - "SOT-005-DEPENDENCY-TARGET-PROFILES"
+    - "SOT-005-DEPENDENCY-APPLICATION"
+    - "SOT-005-DEPENDENCY-TARGETING-SYSTEM"
+    - "SOT-005-STAGE-CATALOG-OUTPUT"
   refs:
     - "04-implementation-plan-handoff.md"
     - "03-system-spec-handoff.md"

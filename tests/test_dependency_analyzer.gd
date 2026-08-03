@@ -91,7 +91,7 @@ func _test_self_cycle() -> void:
 
 
 func _test_generated_stages_are_deterministic_and_solvable() -> void:
-	for stage_id: String in STAGE_CATALOG.STAGE_IDS:
+	for stage_id: String in STAGE_CATALOG.get_stage_ids():
 		var first_stage: Dictionary = STAGE_CATALOG.get_stage(stage_id)
 		var second_stage: Dictionary = STAGE_CATALOG.get_stage(stage_id)
 		var first_analysis: Dictionary = first_stage["dependency_analysis"]

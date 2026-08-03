@@ -1,5 +1,5 @@
 project_id: pickup-arrow
 status: active
-current_sprint: dependency-targeting-005
-current_sprint_status: active
-next_action: await_dependency-targeting-005_closeout
+current_sprint: map-generation-mode-008
+current_sprint_status: completed
+next_action: start_next_sprint

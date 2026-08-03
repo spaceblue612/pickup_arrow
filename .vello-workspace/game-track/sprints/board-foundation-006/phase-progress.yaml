@@ -1,0 +1,9 @@
+route: full
+scope_authorization: confirmed
+groups:
+  - id: EG-BOARD-DATA-MASK-006
+    status: completed
+  - id: EG-BOARD-VIEWPORT-006
+    status: completed
+next_action: sprint_completed
+sprint_status: completed

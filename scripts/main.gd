@@ -4,6 +4,8 @@ extends Node2D
 const STAGE_CATALOG := preload("res://scripts/stage_catalog.gd")
 const PATH_RULE := preload("res://scripts/path_rule.gd")
 const BOARD_STATE := preload("res://scripts/board_state.gd")
+const BOARD_VIEWPORT := preload("res://scripts/board_viewport.gd")
+const MAP_GENERATION_CONTROLLER := preload("res://scripts/map_generation_controller.gd")
 
 const BACKGROUND_COLOR := Color("182033")
 const BOARD_COLOR := Color("263451")
@@ -12,24 +14,136 @@ const ARROW_COLOR := Color("79c8ff")
 const EXTRACTING_COLOR := Color("ffd166")
 const BLOCKED_COLOR := Color("ff6b6b")
 const TEXT_COLOR := Color("eef4ff")
+const WHEEL_ZOOM_FACTOR := 1.15
+
+enum FlowState {
+	HOME,
+	GENERATING,
+	PLAYING,
+}
+
+signal stage_load_completed(stage_id: String, runtime_seed: int)
+signal stage_load_failed(stage_id: String, code: String)
 
 @export_range(100.0, 4000.0, 50.0) var extraction_speed_pixels_per_second := 1600.0
+@export_range(4.0, 96.0, 1.0) var drag_threshold_pixels := 12.0
+@export var read_only_preview := false
+@export var developer_checks_enabled := OS.is_debug_build()
 
 var board_state = BOARD_STATE.new()
+var board_view = BOARD_VIEWPORT.new()
 var blocked_arrow_id := ""
 var blocked_feedback_remaining := 0.0
 var extracting_arrow_id := ""
 var extraction_progress_cells := 0.0
 var status_message := ""
+var _blocked_cell_set: Dictionary = {}
+var flow_state := FlowState.HOME
+var retry_stage_id := ""
+var home_error_message := ""
+var generation_wait_ratio := 0.0
+var generation_elapsed_seconds := 0.0
+var generation_stage_id := ""
+var last_runtime_seed := -1
+var generation_controller: Node
+var active_stage_definition: Dictionary = {}
+var _active_touches: Dictionary = {}
 
 
 func _ready() -> void:
-	initialize_game()
+	_ensure_generation_controller()
+	if STAGE_CATALOG.get_stage_ids().is_empty():
+		show_home("Balance snapshot failed to load")
+	else:
+		show_home()
 
 
 func initialize_game() -> Dictionary:
-	var result: Dictionary = board_state.load_stage(STAGE_CATALOG.STAGE_IDS[0])
+	var stage_ids := STAGE_CATALOG.get_stage_ids()
+	if stage_ids.is_empty():
+		status_message = "Balance snapshot failed to load"
+		return {"event": "load_failed"}
+	var result: Dictionary = load_stage(stage_ids[0])
 	status_message = "Tap an arrow to pull it out"
+	return result
+
+
+func show_home(error_message: String = "", failed_stage_id: String = "") -> void:
+	flow_state = FlowState.HOME
+	home_error_message = error_message
+	retry_stage_id = failed_stage_id
+	generation_stage_id = ""
+	generation_wait_ratio = 0.0
+	generation_elapsed_seconds = 0.0
+	board_view.cancel_pointer()
+	board_view.end_pinch()
+	_active_touches.clear()
+	queue_redraw()
+
+
+func start_game() -> Dictionary:
+	var stage_ids := STAGE_CATALOG.get_stage_ids()
+	if stage_ids.is_empty():
+		show_home("Balance snapshot failed to load")
+		return {"event": "load_failed"}
+	var stage_id := retry_stage_id if not retry_stage_id.is_empty() else stage_ids[0]
+	home_error_message = ""
+	retry_stage_id = ""
+	return request_stage(stage_id)
+
+
+func start_developer_random_stage() -> Dictionary:
+	if not developer_checks_enabled:
+		return {"event": "developer_check_unavailable"}
+	return request_stage("STAGE-004")
+
+
+func request_stage(
+	stage_id: String,
+	runtime_seed_override: int = -1,
+	timeout_seconds: float = MAP_GENERATION_CONTROLLER.DEFAULT_TIMEOUT_SECONDS
+) -> Dictionary:
+	var profile := STAGE_CATALOG.get_stage_profile(stage_id)
+	if profile.is_empty():
+		show_home("Map generation problem. Please try again.", stage_id)
+		return {"event": "load_failed"}
+	if profile["generation_mode"] == "fixed" and runtime_seed_override < 0:
+		var fixed_result := load_stage(stage_id)
+		if fixed_result["event"] != "stage_loaded":
+			show_home("Stage settings could not generate a playable map.", stage_id)
+			stage_load_failed.emit(stage_id, "generation_failed")
+		return fixed_result
+
+	_ensure_generation_controller()
+	flow_state = FlowState.GENERATING
+	generation_stage_id = stage_id
+	generation_wait_ratio = 0.0
+	generation_elapsed_seconds = 0.0
+	status_message = "Generating map..."
+	var request: Dictionary = generation_controller.request_stage(
+		stage_id,
+		runtime_seed_override,
+		timeout_seconds
+	)
+	last_runtime_seed = int(request["runtime_seed"])
+	queue_redraw()
+	return {
+		"event": "generation_requested" if request["error"].is_empty() else "load_failed",
+		"request": request,
+	}
+
+
+func load_stage(stage_id: String) -> Dictionary:
+	var stage_definition := STAGE_CATALOG.get_stage(stage_id)
+	if stage_definition.is_empty():
+		return {"event": "load_failed"}
+	var result: Dictionary = board_state.load_stage_definition(stage_definition)
+	if result["event"] == "stage_loaded":
+		active_stage_definition = stage_definition.duplicate(true)
+		flow_state = FlowState.PLAYING
+		last_runtime_seed = int(STAGE_CATALOG.get_stage_profile(stage_id)["seed"])
+		_configure_board_view()
+		stage_load_completed.emit(stage_id, last_runtime_seed)
 	queue_redraw()
 	return result
 
@@ -45,6 +159,7 @@ func select_arrow_id(arrow_id: String) -> Dictionary:
 		"extraction_requested":
 			extracting_arrow_id = arrow_id
 			status_message = ""
+			board_view.cancel_pointer()
 			if is_inside_tree():
 				_start_extraction_animation(arrow_id)
 			queue_redraw()
@@ -66,9 +181,18 @@ func complete_active_extraction() -> Dictionary:
 
 
 func advance_after_clear() -> Dictionary:
+	var stage_ids := STAGE_CATALOG.get_stage_ids()
+	var current_index := stage_ids.find(board_state.active_stage_id)
+	if current_index >= 0 and current_index < stage_ids.size() - 1:
+		var next_stage_id: String = stage_ids[current_index + 1]
+		var next_profile := STAGE_CATALOG.get_stage_profile(next_stage_id)
+		if next_profile.get("generation_mode") == "random":
+			return request_stage(next_stage_id)
 	var result: Dictionary = board_state.advance_after_clear()
 	if result["event"] == "stage_loaded":
-		status_message = "Stage %d" % (STAGE_CATALOG.STAGE_IDS.find(board_state.active_stage_id) + 1)
+		flow_state = FlowState.PLAYING
+		_configure_board_view()
+		status_message = "Stage %d" % (STAGE_CATALOG.get_stage_ids().find(board_state.active_stage_id) + 1)
 	elif result["event"] == "prototype_complete":
 		status_message = "All prototype stages cleared!"
 	queue_redraw()
@@ -76,6 +200,7 @@ func advance_after_clear() -> Dictionary:
 
 
 func get_arrow_screen_position(arrow_id: String) -> Vector2:
+	_ensure_board_view_configuration()
 	for arrow_data: Dictionary in board_state.remaining_arrows:
 		if arrow_data["id"] == arrow_id:
 			return _cell_to_position(arrow_data["head_cell"])
@@ -83,6 +208,7 @@ func get_arrow_screen_position(arrow_id: String) -> Vector2:
 
 
 func get_arrow_screen_positions(arrow_id: String) -> PackedVector2Array:
+	_ensure_board_view_configuration()
 	var positions := PackedVector2Array()
 	var arrow_data := _get_remaining_arrow(arrow_id)
 	if arrow_data.is_empty():
@@ -95,22 +221,105 @@ func get_arrow_screen_positions(arrow_id: String) -> PackedVector2Array:
 func get_arrow_id_at_position(position: Vector2) -> String:
 	if board_state.phase != BOARD_STATE.Phase.READY:
 		return ""
-	var hit_radius := _cell_size() * 0.42
+	_ensure_board_view_configuration()
+	var selected_cell := board_view.screen_to_cell(position)
+	if selected_cell == Vector2i.ZERO:
+		return ""
 	for arrow_data: Dictionary in board_state.remaining_arrows:
 		for cell: Vector2i in arrow_data["cells"]:
-			if position.distance_to(_cell_to_position(cell)) <= hit_radius:
+			if cell == selected_cell:
 				return arrow_data["id"]
 	return ""
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch and event.pressed:
-		_try_select_at_position(event.position)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		_try_select_at_position(event.position)
+	if flow_state == FlowState.HOME:
+		if not read_only_preview:
+			_handle_home_input(event)
+		return
+	if flow_state == FlowState.GENERATING:
+		return
+	if not read_only_preview \
+			and developer_checks_enabled and _is_pointer_release_in_rect(
+		event,
+		_developer_home_button_rect(_viewport_size())
+	):
+		show_home()
+		return
+	if board_state.phase != BOARD_STATE.Phase.READY:
+		board_view.cancel_pointer()
+		board_view.end_pinch()
+		_active_touches.clear()
+		return
+	_ensure_board_view_configuration()
+	if event is InputEventScreenTouch:
+		_handle_screen_touch(event)
+	elif event is InputEventScreenDrag:
+		_handle_screen_drag(event)
+	elif event is InputEventMouseButton \
+			and (event.button_index == MOUSE_BUTTON_WHEEL_UP \
+				or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		if event.pressed and board_view.play_rect.has_point(event.position):
+			var factor := WHEEL_ZOOM_FACTOR \
+					if event.button_index == MOUSE_BUTTON_WHEEL_UP \
+					else 1.0 / WHEEL_ZOOM_FACTOR
+			if board_view.zoom_by_factor(factor, event.position):
+				queue_redraw()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			board_view.begin_pointer(event.position)
+		else:
+			_finish_pointer(event.position)
+	elif event is InputEventMouseMotion \
+			and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		if board_view.update_pointer(event.position):
+			queue_redraw()
+
+
+func _handle_screen_touch(event: InputEventScreenTouch) -> void:
+	if event.pressed:
+		_active_touches[event.index] = event.position
+		if _active_touches.size() == 1:
+			board_view.begin_pointer(event.position)
+		elif _active_touches.size() == 2:
+			var positions := _first_two_touch_positions()
+			if board_view.begin_pinch(positions[0], positions[1]):
+				queue_redraw()
+		return
+	var was_pinching: bool = board_view.pinch_active
+	_active_touches.erase(event.index)
+	if was_pinching:
+		board_view.end_pinch()
+		board_view.cancel_pointer()
+		queue_redraw()
+	else:
+		_finish_pointer(event.position)
+
+
+func _handle_screen_drag(event: InputEventScreenDrag) -> void:
+	_active_touches[event.index] = event.position
+	if _active_touches.size() >= 2:
+		var positions := _first_two_touch_positions()
+		if not board_view.pinch_active:
+			board_view.begin_pinch(positions[0], positions[1])
+		if board_view.update_pinch(positions[0], positions[1]):
+			queue_redraw()
+	elif not board_view.pinch_active and board_view.update_pointer(event.position):
+		queue_redraw()
+
+
+func _first_two_touch_positions() -> Array[Vector2]:
+	var touch_ids: Array = _active_touches.keys()
+	touch_ids.sort()
+	return [
+		_active_touches[touch_ids[0]],
+		_active_touches[touch_ids[1]],
+	]
 
 
 func _process(delta: float) -> void:
+	if flow_state == FlowState.GENERATING:
+		queue_redraw()
 	if not extracting_arrow_id.is_empty():
 		queue_redraw()
 	if blocked_feedback_remaining <= 0.0:
@@ -122,12 +331,110 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var viewport_size := _viewport_size()
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), BACKGROUND_COLOR)
-	_draw_header(viewport_size)
+	var viewport_dimensions := _viewport_size()
+	draw_rect(Rect2(Vector2.ZERO, viewport_dimensions), BACKGROUND_COLOR)
+	if flow_state == FlowState.HOME:
+		_draw_home(viewport_dimensions)
+		return
+	if flow_state == FlowState.GENERATING:
+		_draw_generation_wait(viewport_dimensions)
+		return
+	_ensure_board_view_configuration()
+	_draw_header(viewport_dimensions)
 	_draw_board()
 	if board_state.phase == BOARD_STATE.Phase.PROTOTYPE_COMPLETE:
-		_draw_completion(viewport_size)
+		_draw_completion(viewport_dimensions)
+
+
+func _draw_home(viewport_dimensions: Vector2) -> void:
+	var font := ThemeDB.fallback_font
+	var center_x := viewport_dimensions.x * 0.5
+	draw_string(font, Vector2(center_x - 150.0, 180.0), "PICKUP ARROW", HORIZONTAL_ALIGNMENT_CENTER, 300.0, 38, TEXT_COLOR)
+	if not home_error_message.is_empty():
+		draw_multiline_string(
+			font,
+			Vector2(center_x - 240.0, 270.0),
+			home_error_message,
+			HORIZONTAL_ALIGNMENT_CENTER,
+			480.0,
+			22,
+			-1,
+			Color("ffb4a9")
+		)
+	var button := _home_button_rect(viewport_dimensions)
+	draw_rect(button, ARROW_COLOR, true)
+	var label := "RETRY %s" % retry_stage_id if not retry_stage_id.is_empty() else "START"
+	draw_string(font, button.position + Vector2(0.0, 52.0), label, HORIZONTAL_ALIGNMENT_CENTER, button.size.x, 25, BACKGROUND_COLOR)
+	if developer_checks_enabled:
+		var developer_button := _developer_stage_button_rect(viewport_dimensions)
+		draw_rect(developer_button, BOARD_COLOR, true)
+		draw_rect(developer_button, ARROW_COLOR, false, 2.0)
+		draw_string(
+			font,
+			developer_button.position + Vector2(0.0, 48.0),
+			"TEST STAGE-004",
+			HORIZONTAL_ALIGNMENT_CENTER,
+			developer_button.size.x,
+			22,
+			TEXT_COLOR
+		)
+
+
+func _draw_generation_wait(viewport_dimensions: Vector2) -> void:
+	var font := ThemeDB.fallback_font
+	var center_x := viewport_dimensions.x * 0.5
+	draw_string(font, Vector2(center_x - 220.0, 260.0), "GENERATING %s" % generation_stage_id, HORIZONTAL_ALIGNMENT_CENTER, 440.0, 28, TEXT_COLOR)
+	var track := Rect2(Vector2(center_x - 230.0, 330.0), Vector2(460.0, 30.0))
+	draw_rect(track, BOARD_COLOR, true)
+	draw_rect(Rect2(track.position, Vector2(track.size.x * generation_wait_ratio, track.size.y)), ARROW_COLOR, true)
+	draw_string(font, Vector2(center_x - 220.0, 410.0), "%.1f / 10.0 sec" % generation_elapsed_seconds, HORIZONTAL_ALIGNMENT_CENTER, 440.0, 22, TEXT_COLOR)
+
+
+func _handle_home_input(event: InputEvent) -> void:
+	var released := false
+	var position := Vector2.ZERO
+	if event is InputEventScreenTouch and not event.pressed:
+		released = true
+		position = event.position
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		released = true
+		position = event.position
+	if released:
+		var viewport_dimensions := _viewport_size()
+		if developer_checks_enabled \
+				and _developer_stage_button_rect(viewport_dimensions).has_point(position):
+			start_developer_random_stage()
+		elif _home_button_rect(viewport_dimensions).has_point(position):
+			start_game()
+
+
+func _home_button_rect(viewport_dimensions: Vector2) -> Rect2:
+	return Rect2(Vector2(viewport_dimensions.x * 0.5 - 160.0, 470.0), Vector2(320.0, 76.0))
+
+
+func _developer_stage_button_rect(viewport_dimensions: Vector2) -> Rect2:
+	return Rect2(Vector2(viewport_dimensions.x * 0.5 - 160.0, 574.0), Vector2(320.0, 70.0))
+
+
+func _developer_home_button_rect(viewport_dimensions: Vector2) -> Rect2:
+	return Rect2(Vector2(viewport_dimensions.x - 190.0, 38.0), Vector2(150.0, 54.0))
+
+
+func _is_pointer_release_in_rect(event: InputEvent, rect: Rect2) -> bool:
+	if event is InputEventScreenTouch and not event.pressed:
+		return rect.has_point(event.position)
+	if event is InputEventMouseButton \
+			and event.button_index == MOUSE_BUTTON_LEFT \
+			and not event.pressed:
+		return rect.has_point(event.position)
+	return false
+
+
+func _finish_pointer(position: Vector2) -> void:
+	var result := board_view.end_pointer(position)
+	if result["is_tap"] and not read_only_preview:
+		_try_select_at_position(result["position"])
+	queue_redraw()
 
 
 func _try_select_at_position(position: Vector2) -> void:
@@ -169,16 +476,17 @@ func get_extraction_motion(arrow_id: String) -> Dictionary:
 
 
 func _head_exit_distance(arrow_data: Dictionary, direction: Vector2i) -> float:
-	var head_position := _cell_to_position(arrow_data["head_cell"])
-	var viewport_size := _viewport_size()
-	var margin := _cell_size()
+	var head_cell: Vector2i = arrow_data["head_cell"]
+	var exit_distance_cells := 0.0
 	if direction == Vector2i.RIGHT:
-		return viewport_size.x - head_position.x + margin
-	if direction == Vector2i.LEFT:
-		return head_position.x + margin
-	if direction == Vector2i.DOWN:
-		return viewport_size.y - head_position.y + margin
-	return head_position.y + margin
+		exit_distance_cells = float(board_state.grid_size.x - head_cell.x + 1)
+	elif direction == Vector2i.LEFT:
+		exit_distance_cells = float(head_cell.x)
+	elif direction == Vector2i.DOWN:
+		exit_distance_cells = float(board_state.grid_size.y - head_cell.y + 1)
+	else:
+		exit_distance_cells = float(head_cell.y)
+	return exit_distance_cells * _cell_size()
 
 
 func get_extraction_grid_positions(
@@ -227,27 +535,55 @@ func _route_grid_position(arrow_data: Dictionary, route_distance: float) -> Vect
 	return Vector2(cells[from_index]).lerp(Vector2(cells[to_index]), segment_progress)
 
 
-func _draw_header(viewport_size: Vector2) -> void:
+func _draw_header(viewport_dimensions: Vector2) -> void:
 	var font := ThemeDB.fallback_font
-	var stage_number := STAGE_CATALOG.STAGE_IDS.find(board_state.active_stage_id) + 1
+	var stage_ids := STAGE_CATALOG.get_stage_ids()
+	var stage_number := stage_ids.find(board_state.active_stage_id) + 1
 	var title := "PICKUP ARROW"
-	var stage_label := "STAGE %d / %d" % [stage_number, STAGE_CATALOG.STAGE_IDS.size()]
+	var stage_label := "STAGE %d / %d" % [stage_number, stage_ids.size()]
 	draw_string(font, Vector2(42.0, 70.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 34, TEXT_COLOR)
 	draw_string(font, Vector2(42.0, 112.0), stage_label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color("a9b8d6"))
+	if developer_checks_enabled:
+		var developer_home_button := _developer_home_button_rect(viewport_dimensions)
+		draw_rect(developer_home_button, BOARD_COLOR, true)
+		draw_rect(developer_home_button, ARROW_COLOR, false, 2.0)
+		draw_string(
+			font,
+			developer_home_button.position + Vector2(0.0, 36.0),
+			"TEST HOME",
+			HORIZONTAL_ALIGNMENT_CENTER,
+			developer_home_button.size.x,
+			18,
+			TEXT_COLOR
+		)
+		if active_stage_definition.get("generation_mode") == "random":
+			draw_string(
+				font,
+				Vector2(42.0, 142.0),
+				"RUNTIME SEED %d" % last_runtime_seed,
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1.0,
+				17,
+				Color("a9b8d6")
+			)
 	if not status_message.is_empty():
-		draw_string(font, Vector2(42.0, viewport_size.y - 60.0), status_message, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 24, TEXT_COLOR)
+		draw_string(font, Vector2(42.0, viewport_dimensions.y - 60.0), status_message, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 24, TEXT_COLOR)
 
 
 func _draw_board() -> void:
-	var board_rect := _board_rect()
-	var cell_size := _cell_size()
-	draw_style_box(_board_style_box(), board_rect)
-	for line_index in range(STAGE_CATALOG.GRID_SIZE.x + 1):
-		var x := board_rect.position.x + line_index * cell_size
-		draw_line(Vector2(x, board_rect.position.y), Vector2(x, board_rect.end.y), GRID_COLOR, 2.0)
-	for line_index in range(STAGE_CATALOG.GRID_SIZE.y + 1):
-		var y := board_rect.position.y + line_index * cell_size
-		draw_line(Vector2(board_rect.position.x, y), Vector2(board_rect.end.x, y), GRID_COLOR, 2.0)
+	var bounds := board_view.visible_cell_bounds()
+	if bounds["count"] <= 0:
+		return
+	for y: int in range(bounds["min"].y, bounds["max"].y + 1):
+		for x: int in range(bounds["min"].x, bounds["max"].x + 1):
+			var cell := Vector2i(x, y)
+			if _blocked_cell_set.has(cell):
+				continue
+			var visible_rect := board_view.cell_screen_rect(cell).intersection(board_view.play_rect)
+			if not visible_rect.has_area():
+				continue
+			draw_rect(visible_rect, BOARD_COLOR)
+			draw_rect(visible_rect, GRID_COLOR, false, 2.0)
 
 	for arrow_data: Dictionary in board_state.remaining_arrows:
 		var arrow_id: String = arrow_data["id"]
@@ -260,7 +596,16 @@ func _draw_board() -> void:
 		elif arrow_id == blocked_arrow_id:
 			draw_offset.x = sin(blocked_feedback_remaining * 90.0) * 10.0
 			color = BLOCKED_COLOR
-		_draw_arrow(arrow_data, color, draw_offset, extraction_progress)
+		if _arrow_is_visible(arrow_data, extraction_progress):
+			_draw_arrow(arrow_data, color, draw_offset, extraction_progress)
+
+
+func _arrow_is_visible(arrow_data: Dictionary, extraction_progress: float) -> bool:
+	var expanded_play_rect: Rect2 = board_view.play_rect.grow(_cell_size())
+	for grid_position: Vector2 in get_extraction_grid_positions(arrow_data, extraction_progress):
+		if expanded_play_rect.has_point(_grid_position_to_screen(grid_position)):
+			return true
+	return false
 
 
 func _draw_arrow(
@@ -279,38 +624,142 @@ func _draw_arrow(
 
 	if grid_positions.size() == 1:
 		var center := _grid_position_to_screen(grid_positions[0]) + offset
-		draw_line(center - direction * arrow_size * 0.36, center, color, line_width, true)
+		_draw_clipped_line(
+			center - direction * arrow_size * 0.36,
+			center,
+			color,
+			line_width
+		)
 	else:
 		for index: int in range(body_grid_path.size() - 1):
 			var from_position := _grid_position_to_screen(body_grid_path[index]) + offset
 			var to_position := _grid_position_to_screen(body_grid_path[index + 1]) + offset
-			draw_line(from_position, to_position, color, line_width, true)
+			_draw_clipped_line(from_position, to_position, color, line_width)
 		for grid_position: Vector2 in grid_positions:
-			draw_circle(_grid_position_to_screen(grid_position) + offset, line_width * 0.5, color)
+			_draw_clipped_circle(
+				_grid_position_to_screen(grid_position) + offset,
+				line_width * 0.5,
+				color
+			)
 
 	var head_position := _grid_position_to_screen(grid_positions[0]) + offset
 	var tip := head_position + direction * arrow_size * 0.42
 	var head_base := tip - direction * arrow_size * 0.30
-	draw_line(head_position, head_base, color, line_width, true)
-	draw_colored_polygon(PackedVector2Array([tip, head_base + normal * arrow_size * 0.24, head_base - normal * arrow_size * 0.24]), color)
+	_draw_clipped_line(head_position, head_base, color, line_width)
+	_draw_clipped_polygon(
+		PackedVector2Array([
+			tip,
+			head_base + normal * arrow_size * 0.24,
+			head_base - normal * arrow_size * 0.24,
+		]),
+		color
+	)
 
 
-func _draw_completion(viewport_size: Vector2) -> void:
+func _draw_clipped_line(
+	from_position: Vector2,
+	to_position: Vector2,
+	color: Color,
+	line_width: float
+) -> void:
+	var center_clip_rect: Rect2 = board_view.play_rect.grow(-line_width * 0.5)
+	var clipped_segment := _clip_segment_to_rect(
+		from_position,
+		to_position,
+		center_clip_rect
+	)
+	if clipped_segment.size() == 2:
+		draw_line(clipped_segment[0], clipped_segment[1], color, line_width, true)
+
+
+func _draw_clipped_circle(center: Vector2, radius: float, color: Color) -> void:
+	if board_view.play_rect.grow(-radius).has_point(center):
+		draw_circle(center, radius, color)
+		return
+	var circle_points := PackedVector2Array()
+	for point_index: int in 20:
+		var angle := TAU * float(point_index) / 20.0
+		circle_points.append(center + Vector2(cos(angle), sin(angle)) * radius)
+	_draw_clipped_polygon(circle_points, color)
+
+
+func _draw_clipped_polygon(points: PackedVector2Array, color: Color) -> void:
+	for clipped_polygon: PackedVector2Array in _clip_polygon_to_play_rect(points):
+		if clipped_polygon.size() >= 3:
+			draw_colored_polygon(clipped_polygon, color)
+
+
+func _clip_polygon_to_play_rect(points: PackedVector2Array) -> Array[PackedVector2Array]:
+	if points.size() < 3:
+		return []
+	var clip_rect: Rect2 = board_view.play_rect
+	var bounds := Rect2(points[0], Vector2.ZERO)
+	for point: Vector2 in points:
+		bounds = bounds.expand(point)
+	if clip_rect.encloses(bounds):
+		return [points]
+	var clip_polygon := PackedVector2Array([
+		clip_rect.position,
+		Vector2(clip_rect.end.x, clip_rect.position.y),
+		clip_rect.end,
+		Vector2(clip_rect.position.x, clip_rect.end.y),
+	])
+	return Geometry2D.intersect_polygons(points, clip_polygon)
+
+
+func _clip_segment_to_rect(
+	from_position: Vector2,
+	to_position: Vector2,
+	clip_rect: Rect2
+) -> PackedVector2Array:
+	if not clip_rect.has_area():
+		return PackedVector2Array()
+	var delta: Vector2 = to_position - from_position
+	var minimum_t := 0.0
+	var maximum_t := 1.0
+	var p_values: Array[float] = [-delta.x, delta.x, -delta.y, delta.y]
+	var q_values: Array[float] = [
+		from_position.x - clip_rect.position.x,
+		clip_rect.end.x - from_position.x,
+		from_position.y - clip_rect.position.y,
+		clip_rect.end.y - from_position.y,
+	]
+	for index: int in 4:
+		var p: float = p_values[index]
+		var q: float = q_values[index]
+		if is_zero_approx(p):
+			if q < 0.0:
+				return PackedVector2Array()
+			continue
+		var ratio: float = q / p
+		if p < 0.0:
+			minimum_t = maxf(minimum_t, ratio)
+		else:
+			maximum_t = minf(maximum_t, ratio)
+		if minimum_t > maximum_t:
+			return PackedVector2Array()
+	return PackedVector2Array([
+		from_position + delta * minimum_t,
+		from_position + delta * maximum_t,
+	])
+
+
+func _draw_completion(viewport_dimensions: Vector2) -> void:
 	var font := ThemeDB.fallback_font
-	var panel := Rect2(viewport_size * Vector2(0.10, 0.37), viewport_size * Vector2(0.80, 0.24))
+	var panel := Rect2(viewport_dimensions * Vector2(0.10, 0.37), viewport_dimensions * Vector2(0.80, 0.24))
 	draw_style_box(_completion_style_box(), panel)
 	draw_string(font, panel.position + Vector2(42.0, 74.0), "PROTOTYPE COMPLETE", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 31, TEXT_COLOR)
-	draw_string(font, panel.position + Vector2(42.0, 120.0), "All three stages are clear.", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color("c9d6ef"))
+	draw_string(font, panel.position + Vector2(42.0, 120.0), "All synced stages are clear.", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color("c9d6ef"))
 
 
 func _board_rect() -> Rect2:
-	var viewport_size := _viewport_size()
-	var board_size := minf(viewport_size.x - 64.0, viewport_size.y * 0.66)
-	return Rect2(Vector2((viewport_size.x - board_size) * 0.5, viewport_size.y * 0.20), Vector2(board_size, board_size))
+	_ensure_board_view_configuration()
+	return board_view.play_rect
 
 
 func _cell_size() -> float:
-	return _board_rect().size.x / STAGE_CATALOG.GRID_SIZE.x
+	_ensure_board_view_configuration()
+	return board_view.cell_size
 
 
 func _cell_to_position(cell: Vector2i) -> Vector2:
@@ -318,12 +767,8 @@ func _cell_to_position(cell: Vector2i) -> Vector2:
 
 
 func _grid_position_to_screen(grid_position: Vector2) -> Vector2:
-	var board_rect := _board_rect()
-	var cell_size := _cell_size()
-	return board_rect.position + Vector2(
-		(grid_position.x - 0.5) * cell_size,
-		(grid_position.y - 0.5) * cell_size
-	)
+	_ensure_board_view_configuration()
+	return board_view.grid_to_screen(grid_position)
 
 
 func _get_remaining_arrow(arrow_id: String) -> Dictionary:
@@ -333,23 +778,80 @@ func _get_remaining_arrow(arrow_id: String) -> Dictionary:
 	return {}
 
 
+func _configure_board_view() -> void:
+	var active_grid_size: Vector2i = board_state.grid_size
+	if active_grid_size == Vector2i.ZERO:
+		active_grid_size = STAGE_CATALOG.GRID_SIZE
+	board_view.drag_threshold_pixels = drag_threshold_pixels
+	board_view.configure(active_grid_size, _viewport_size())
+	_rebuild_blocked_cell_set()
+
+
+func _ensure_board_view_configuration() -> void:
+	var active_grid_size: Vector2i = board_state.grid_size
+	if active_grid_size == Vector2i.ZERO:
+		active_grid_size = STAGE_CATALOG.GRID_SIZE
+	var active_viewport_size := _viewport_size()
+	if not board_view.matches_configuration(active_grid_size, active_viewport_size):
+		_configure_board_view()
+	board_view.drag_threshold_pixels = drag_threshold_pixels
+
+
+func _rebuild_blocked_cell_set() -> void:
+	_blocked_cell_set.clear()
+	for cell: Vector2i in board_state.blocked_cells:
+		_blocked_cell_set[cell] = true
+
+
+func _ensure_generation_controller() -> void:
+	if is_instance_valid(generation_controller):
+		return
+	generation_controller = MAP_GENERATION_CONTROLLER.new()
+	add_child(generation_controller)
+	generation_controller.progress_changed.connect(_on_generation_progress)
+	generation_controller.generation_completed.connect(_on_generation_completed)
+	generation_controller.generation_failed.connect(_on_generation_failed)
+
+
+func _on_generation_progress(request_id: int, wait_ratio: float, elapsed_seconds: float) -> void:
+	if not is_instance_valid(generation_controller) \
+			or request_id != generation_controller.active_request_id:
+		return
+	generation_wait_ratio = wait_ratio
+	generation_elapsed_seconds = elapsed_seconds
+	queue_redraw()
+
+
+func _on_generation_completed(_request_id: int, stage_definition: Dictionary) -> void:
+	var result := board_state.load_stage_definition(stage_definition)
+	if result["event"] != "stage_loaded":
+		_on_generation_failed(0, stage_definition.get("id", generation_stage_id), "invalid_result")
+		return
+	flow_state = FlowState.PLAYING
+	active_stage_definition = stage_definition.duplicate(true)
+	last_runtime_seed = int(stage_definition["runtime_seed"])
+	generation_stage_id = ""
+	_configure_board_view()
+	status_message = "Tap an arrow to pull it out"
+	stage_load_completed.emit(board_state.active_stage_id, last_runtime_seed)
+	queue_redraw()
+
+
+func _on_generation_failed(_request_id: int, stage_id: String, code: String) -> void:
+	var message := "Map generation took too long. Please try again."
+	if code != "timeout":
+		message = "Map generation problem. Please try again."
+	show_home(message, stage_id)
+	stage_load_failed.emit(stage_id, code)
+
+
 func _viewport_size() -> Vector2:
 	if not is_inside_tree():
 		return Vector2(720.0, 1280.0)
-	var viewport_size := get_viewport_rect().size
-	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+	var current_viewport_size := get_viewport_rect().size
+	if current_viewport_size.x <= 0.0 or current_viewport_size.y <= 0.0:
 		return Vector2(720.0, 1280.0)
-	return viewport_size
-
-
-func _board_style_box() -> StyleBoxFlat:
-	var style_box := StyleBoxFlat.new()
-	style_box.bg_color = BOARD_COLOR
-	style_box.corner_radius_top_left = 28
-	style_box.corner_radius_top_right = 28
-	style_box.corner_radius_bottom_left = 28
-	style_box.corner_radius_bottom_right = 28
-	return style_box
+	return current_viewport_size
 
 
 func _completion_style_box() -> StyleBoxFlat:

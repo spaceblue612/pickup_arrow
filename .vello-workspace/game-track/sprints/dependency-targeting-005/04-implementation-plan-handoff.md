@@ -53,8 +53,11 @@ handoff:
     - "tests/test_gameplay_core.gd"
     - "tests/test_playable_flow.gd"
     - "main.tscn 헤드리스 기동"
-  sot_updates_required:
-    - "closeout에서만 current-design.yaml과 entity-ledger.yaml 갱신"
+  sot_delta_refs:
+    - "SOT-005-DEPENDENCY-TARGET-PROFILES"
+    - "SOT-005-DEPENDENCY-APPLICATION"
+    - "SOT-005-DEPENDENCY-TARGETING-SYSTEM"
+    - "SOT-005-STAGE-CATALOG-OUTPUT"
   refs:
     - "03-system-spec-handoff.md"
     - "02-design-handoff.md"

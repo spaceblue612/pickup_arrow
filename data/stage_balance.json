@@ -1,0 +1,107 @@
+{
+	"schema_version": 2,
+	"source_revision": "sheets-v2:c225f3c9bff9",
+	"content_hash": "c225f3c9bff9e13aff4bd7af51e33d0e66f9c7204f54e87e0faad84ff880cc29",
+	"profiles": [
+		{
+			"stage_id": "STAGE-001",
+			"stage_order": 1,
+			"expected_difficulty_level": null,
+			"grid_size": [
+				16,
+				16
+			],
+			"seed": 1001,
+			"generation_mode": "fixed",
+			"primary_arrow_count": 3,
+			"min_length": 1,
+			"max_length": 6,
+			"target_empty_ratio": 0.7,
+			"filler_max_length": 3,
+			"dependency_target": {
+				"min_dependency_depth": 2,
+				"max_dependency_depth": 4,
+				"min_initial_extractable_ratio": 0.5,
+				"max_initial_extractable_ratio": 1,
+				"min_forced_state_ratio": 0,
+				"max_forced_state_ratio": 0.25
+			},
+			"max_candidate_attempts": 64
+		},
+		{
+			"stage_id": "STAGE-002",
+			"stage_order": 2,
+			"expected_difficulty_level": null,
+			"grid_size": [
+				25,
+				25
+			],
+			"seed": 2002,
+			"generation_mode": "fixed",
+			"primary_arrow_count": 4,
+			"min_length": 3,
+			"max_length": 10,
+			"target_empty_ratio": 0.55,
+			"filler_max_length": 3,
+			"dependency_target": {
+				"min_dependency_depth": 3,
+				"max_dependency_depth": 5,
+				"min_initial_extractable_ratio": 0.3,
+				"max_initial_extractable_ratio": 0.6,
+				"min_forced_state_ratio": 0.1,
+				"max_forced_state_ratio": 0.4
+			},
+			"max_candidate_attempts": 64
+		},
+		{
+			"stage_id": "STAGE-003",
+			"stage_order": 3,
+			"expected_difficulty_level": null,
+			"grid_size": [
+				9,
+				9
+			],
+			"seed": 3003,
+			"generation_mode": "fixed",
+			"primary_arrow_count": 5,
+			"min_length": 5,
+			"max_length": 14,
+			"target_empty_ratio": 0.4,
+			"filler_max_length": 3,
+			"dependency_target": {
+				"min_dependency_depth": 4,
+				"max_dependency_depth": 8,
+				"min_initial_extractable_ratio": 0,
+				"max_initial_extractable_ratio": 0.4,
+				"min_forced_state_ratio": 0.2,
+				"max_forced_state_ratio": 1
+			},
+			"max_candidate_attempts": 64
+		},
+		{
+			"stage_id": "STAGE-004",
+			"stage_order": 4,
+			"expected_difficulty_level": null,
+			"grid_size": [
+				16,
+				16
+			],
+			"seed": 4004,
+			"generation_mode": "random",
+			"primary_arrow_count": 5,
+			"min_length": 5,
+			"max_length": 14,
+			"target_empty_ratio": 0.1,
+			"filler_max_length": 3,
+			"dependency_target": {
+				"min_dependency_depth": 4,
+				"max_dependency_depth": 8,
+				"min_initial_extractable_ratio": 0,
+				"max_initial_extractable_ratio": 0.4,
+				"min_forced_state_ratio": 0.2,
+				"max_forced_state_ratio": 1
+			},
+			"max_candidate_attempts": 64
+		}
+	]
+}

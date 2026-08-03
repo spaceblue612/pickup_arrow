@@ -1,0 +1,12 @@
+sprint_id: balance-authoring-007
+track: game
+route: full
+status: completed
+started_at: 2026-08-02
+title: "Google Sheets 기반 밸런스 운영·스테이지 미리보기"
+scope_authorization: confirmed
+scope:
+  - EPIC-BALANCE-AUTHORING-007
+  - FEATURE-BALANCE-METRIC-CATALOG-007
+  - FEATURE-GOOGLE-SHEETS-AUTHORING-007
+  - FEATURE-STAGE-BALANCE-PREVIEW-007

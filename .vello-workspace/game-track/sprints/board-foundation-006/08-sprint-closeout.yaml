@@ -1,0 +1,61 @@
+sprint_id: board-foundation-006
+closed_at: 2026-08-02
+status: completed
+delivered:
+  - "CORE-VARIABLE-BOARD-006: 스테이지별 유한 직사각 grid_size와 자원 한도 검증"
+  - "CORE-BOARD-MASK-006: 도트 마스크 정규화, 배치 제한, 직사각 외곽 추출 규칙"
+  - "FEATURE-BOARD-PAN-006: 9x9 기준 셀 크기, 넘치는 축 이동, 12px 탭·드래그 분리"
+  - "SYS-BOARD-VIEWPORT: 좌표 변환, 가시 셀 렌더링, 이동 경계와 선택 요청 관리"
+  - "SYS-ARROW-PLACEMENT·SYS-STAGE-CATALOG: 배치 가능 셀 기반 생성과 보드 정의 계약"
+  - "QA-BOARD-FOUNDATION-006: 대형·직사각·마스크 보드 회귀와 사용자 조작 확인 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "EPIC-BALANCE-AUTHORING-007을 다음 스프린트 후보로 설계한다."
+    - "기존 STAGE-001~003에 가변 크기와 마스크 콘텐츠를 적용할지 별도 결정한다."
+    - "실제 운영 크기에서 자원 부족이 확인되면 희소 저장과 청크 렌더링을 검토한다."
+    - "FEATURE-MAP-GENERATION-MODE-008은 밸런스 운영 범위 뒤에 설계한다."
+  blockers: []
+  decisions_needed: []
+  deferred_items:
+    - "EPIC-BALANCE-AUTHORING-007: 난이도 항목, 운영 편집 방식, 스테이지 미리보기"
+    - "기존 STAGE-001~003 가변 크기·마스크 콘텐츠 적용"
+    - "FEATURE-MAP-GENERATION-MODE-008: 고정 맵·랜덤 맵 옵션"
+    - "OPT-SPARSE-CHUNK-RENDERING-006: 실제 자원 부족 확인 시 적용"
+  risks:
+    - "한 변 999는 width x height 10000 자원 한도 안에서만 지원된다."
+    - "대표 대형 보드의 실제 기기 메모리와 프레임 비용은 운영 콘텐츠 크기로 계속 관찰해야 한다."
+    - "기존 STAGE-001~003 콘텐츠는 현재 9x9이며 마스크를 사용하지 않는다."
+change_events:
+  - "CORE-VARIABLE-BOARD-006: active"
+  - "CORE-BOARD-MASK-006: active"
+  - "FEATURE-BOARD-PAN-006: active"
+  - "SYS-BOARD-VIEWPORT: active"
+  - "SYS-STAGE-CATALOG: board definition contract updated"
+  - "SYS-ARROW-PLACEMENT: playable-cell generation updated"
+sot_delta:
+  applied:
+    - SOT-006-VARIABLE-BOARD-RULE
+    - SOT-006-BOARD-MASK-RULE
+    - SOT-006-BOARD-NAVIGATION-RULE
+    - SOT-006-GENERATION-MASK-CONTRACT
+    - SOT-006-BOARD-VIEWPORT-SYSTEM
+    - SOT-006-STAGE-CATALOG-BOARD-CONTRACT
+  discarded: []
+  deferred: []
+sot_updates:
+  project_state:
+    - ../../project-state.yaml
+    - ../../sprint-index.yaml
+    - phase-progress.yaml
+    - sprint.yaml
+  current_design:
+    - ../../current-design/current-design.yaml
+  entity_ledger:
+    - ../../entity-ledger.yaml
+refs:
+  - sot-delta.yaml
+  - 06-qa-handoff.md
+  - 05-implementation-handoff.md
+  - 03-system-spec-handoff.md
+  - ../../current-design/current-design.yaml

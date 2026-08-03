@@ -30,8 +30,11 @@ handoff:
     - "게임 회귀; test_gameplay_core.gd, test_playable_flow.gd 및 main.tscn 기동 판정=passed"
     - "Godot SCRIPT ERROR, ERROR, WARNING 로그 판정=없음"
     - "evidence=/tmp/pickup-arrow-large-qa-large.log,/tmp/pickup-arrow-large-qa-targeting.log,/tmp/pickup-arrow-large-qa-main.log"
-  sot_updates_required:
-    - "closeout 시 current-design.yaml, entity-ledger.yaml, project-state.yaml 갱신"
+  sot_delta_refs:
+    - "SOT-005-DEPENDENCY-TARGET-PROFILES"
+    - "SOT-005-DEPENDENCY-APPLICATION"
+    - "SOT-005-DEPENDENCY-TARGETING-SYSTEM"
+    - "SOT-005-STAGE-CATALOG-OUTPUT"
   refs:
     - "05-implementation-handoff.md"
     - "04-implementation-plan-handoff.md"

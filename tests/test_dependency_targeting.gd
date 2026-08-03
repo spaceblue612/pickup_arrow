@@ -8,6 +8,7 @@ var _failures := PackedStringArray()
 
 func _init() -> void:
 	_test_inclusive_target_boundaries()
+	_test_complete_solution_hard_gate()
 	_test_deterministic_selection()
 	_test_invalid_and_unreachable_targets()
 	_test_stage_targets()
@@ -34,10 +35,35 @@ func _test_inclusive_target_boundaries() -> void:
 		DEPENDENCY_TARGETING.matches_target(maximum_analysis, target),
 		"Maximum target bounds are inclusive"
 	)
+	var forced_reference_only := maximum_analysis.duplicate(true)
+	forced_reference_only["forced_state_ratio"] = 0.0
+	_expect(
+		DEPENDENCY_TARGETING.matches_target(forced_reference_only, target),
+		"Forced-state ratio is observed without rejecting the candidate"
+	)
 
 
+func _test_complete_solution_hard_gate() -> void:
+	var generation := {
+		"arrows": [{"id": "A"}, {"id": "B"}],
+		"solution_order": PackedStringArray(["A"]),
+	}
+	var analysis := {
+		"has_complete_solution": true,
+		"solution_order": PackedStringArray(["A", "B"]),
+	}
+	_expect(
+		not DEPENDENCY_TARGETING._has_complete_solution(generation, analysis),
+		"Incomplete generator solution order is never a valid candidate"
+	)
+	generation["solution_order"] = PackedStringArray(["A", "B"])
+	analysis["has_complete_solution"] = false
+	_expect(
+		not DEPENDENCY_TARGETING._has_complete_solution(generation, analysis),
+		"Deadlocked analysis is never a valid candidate"
+	)
 func _test_deterministic_selection() -> void:
-	var config: Dictionary = STAGE_CATALOG.STAGE_CONFIGS["STAGE-002"]
+	var config: Dictionary = STAGE_CATALOG.get_stage_profile("STAGE-002")
 	var first: Dictionary = _select_with_config(config)
 	var second: Dictionary = _select_with_config(config)
 
@@ -55,18 +81,18 @@ func _test_deterministic_selection() -> void:
 	_expect(metrics["has_selected_candidate"], "Targeting metrics mark a selected candidate")
 	_expect(
 		metrics["selected_seed"] == config["seed"] \
-			+ (metrics["attempt_count"] - 1) * DEPENDENCY_TARGETING.CANDIDATE_SEED_STEP,
+			+ metrics["selected_candidate_index"] * DEPENDENCY_TARGETING.CANDIDATE_SEED_STEP,
 		"Selected seed follows the candidate index contract"
 	)
 
 
 func _test_invalid_and_unreachable_targets() -> void:
-	var config: Dictionary = STAGE_CATALOG.STAGE_CONFIGS["STAGE-001"]
+	var config: Dictionary = STAGE_CATALOG.get_stage_profile("STAGE-001")
 	var invalid_target: Dictionary = config["dependency_target"].duplicate(true)
 	invalid_target["min_initial_extractable_ratio"] = 1.1
 	var invalid: Dictionary = DEPENDENCY_TARGETING.select(
 		config["seed"],
-		STAGE_CATALOG.GRID_SIZE,
+		config["grid_size"],
 		config["primary_arrow_count"],
 		config["min_length"],
 		config["max_length"],
@@ -84,7 +110,7 @@ func _test_invalid_and_unreachable_targets() -> void:
 	var unreachable_target := _target(81, 81, 0.0, 1.0, 0.0, 1.0)
 	var unreachable: Dictionary = DEPENDENCY_TARGETING.select(
 		config["seed"],
-		STAGE_CATALOG.GRID_SIZE,
+		config["grid_size"],
 		config["primary_arrow_count"],
 		config["min_length"],
 		config["max_length"],
@@ -93,28 +119,31 @@ func _test_invalid_and_unreachable_targets() -> void:
 		unreachable_target,
 		3
 	)
-	_expect(not unreachable["error"].is_empty(), "Unreachable target returns an error")
+	_expect(unreachable["error"].is_empty(), "Unreachable difficulty target keeps a valid board")
 	_expect(
 		unreachable["dependency_targeting_metrics"]["attempt_count"] == 3,
 		"Unreachable target checks exactly the candidate limit"
 	)
 	_expect(
-		not unreachable["dependency_targeting_metrics"]["has_selected_candidate"],
-		"Unreachable target does not expose an out-of-range candidate"
+		unreachable["dependency_targeting_metrics"]["has_selected_candidate"] \
+			and unreachable["dependency_targeting_metrics"]["fallback_used"] \
+			and not unreachable["dependency_targeting_metrics"]["target_match"],
+		"Unreachable target exposes the closest valid fallback"
+	)
+	_expect(
+		unreachable["solution_order"].size() == unreachable["arrows"].size() \
+			and unreachable["dependency_analysis"]["has_complete_solution"],
+		"Closest fallback remains completely solvable"
 	)
 
 
 func _test_stage_targets() -> void:
-	for stage_id: String in STAGE_CATALOG.STAGE_IDS:
+	for stage_id: String in STAGE_CATALOG.get_stage_ids():
 		var stage: Dictionary = STAGE_CATALOG.get_stage(stage_id)
 		var analysis: Dictionary = stage["dependency_analysis"]
 		var target: Dictionary = stage["dependency_target"]
 		var targeting_metrics: Dictionary = stage["dependency_targeting_metrics"]
 
-		_expect(
-			DEPENDENCY_TARGETING.matches_target(analysis, target),
-			"%s satisfies every dependency target" % stage_id
-		)
 		_expect(
 			targeting_metrics["dependency_target"] == target,
 			"%s exposes the applied dependency target" % stage_id
@@ -128,12 +157,20 @@ func _test_stage_targets() -> void:
 			analysis["has_complete_solution"],
 			"%s targeted candidate remains completely solvable" % stage_id
 		)
+		_expect(
+			stage["solution_order"].size() == stage["arrows"].size(),
+			"%s selected candidate exposes a full solution order" % stage_id
+		)
+		_expect(
+			targeting_metrics["target_score"].has("target_distance"),
+			"%s exposes its soft-target score" % stage_id
+		)
 
 
 func _select_with_config(config: Dictionary) -> Dictionary:
 	return DEPENDENCY_TARGETING.select(
 		config["seed"],
-		STAGE_CATALOG.GRID_SIZE,
+		config["grid_size"],
 		config["primary_arrow_count"],
 		config["min_length"],
 		config["max_length"],

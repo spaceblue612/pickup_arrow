@@ -28,8 +28,11 @@ handoff:
     - "동일 기준 seed와 목표 프로필에서 선택 seed·시도 횟수·화살·분석 결과가 동일해야 한다"
     - "각 스테이지가 길이·빈칸·완전 해결 조건과 새 의존 목표 범위를 동시에 만족해야 한다"
     - "달성 불가능한 목표에서는 정확히 한도까지 검사한 뒤 오류를 반환해야 한다"
-  sot_updates_required:
-    - "closeout 시 의존 목표 프로필과 후보 채택 규칙을 current-design.yaml에 반영"
+  sot_delta_refs:
+    - "SOT-005-DEPENDENCY-TARGET-PROFILES"
+    - "SOT-005-DEPENDENCY-APPLICATION"
+    - "SOT-005-DEPENDENCY-TARGETING-SYSTEM"
+    - "SOT-005-STAGE-CATALOG-OUTPUT"
   refs:
     - "../dependency-difficulty-004/08-sprint-closeout.yaml"
     - "../../current-design/current-design.yaml"

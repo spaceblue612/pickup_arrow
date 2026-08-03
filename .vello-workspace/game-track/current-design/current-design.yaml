@@ -1,56 +1,276 @@
-design_id: pickup-arrow-current
-updated_at: 2026-07-27
-platform: mobile_touch
-technology:
-  engine: Godot 4.7
-  language: GDScript
-gameplay:
-  grid: 9x9
-  directions: [UP, DOWN, LEFT, RIGHT]
-  arrow_shape: "화살은 화살촉 칸부터 이어지는 스테이지별 길이 범위의 중복 없는 상하좌우 연결 몸통 칸으로 구성되며 꺾일 수 있다."
-  extraction: "화살촉은 지정 방향의 직선 경로로 이동하고 각 후위 몸통은 선행 몸통이 지나간 경로를 같은 속도로 따라가며, 마지막 몸통이 화면 밖으로 나간 뒤 제거된다."
-  path_collision: "화살촉 진행 1라인에 다른 화살 또는 자기 몸통이 있으면 이동할 수 없고, 라인 밖의 몸통은 차단하지 않는다."
-  extraction_speed_pixels_per_second: 1600.0
-  blocked_selection: "막힌 선택은 보드 상태를 유지하고 막힘 피드백을 표시한다."
-  clear_condition: "남은 화살이 없으면 보드가 완료된다."
-  progression: "STAGE-001부터 STAGE-003까지 순서대로 진행하고 STAGE-003 완료 후 prototype-complete 상태가 된다."
-generation:
-  length_ranges:
-    STAGE-001: [1, 6]
-    STAGE-002: [3, 10]
-    STAGE-003: [5, 14]
-  target_empty_ratios:
-    STAGE-001: 0.70
-    STAGE-002: 0.55
-    STAGE-003: 0.40
-  filler_max_length: 3
-  deterministic_seed: true
-  validity: "몸통이 겹치지 않고 자기 몸통이 화살촉 진행선을 막지 않으며 모든 화살을 제거할 수 있는 해결 순서가 존재해야 한다."
-  metrics: "목표·실제 빈칸 비율, 기본·보충 화살 수와 의존 분석 결과를 생성 스테이지에서 제공한다."
-dependency_analysis:
-  graph_direction: "blocker → blocked"
-  deterministic_simulation: "남은 배열 순서에서 첫 추출 가능 화살을 제거한다."
-  metrics:
-    - dependency_depth
-    - initial_extractable_ratio
-    - forced_state_ratio
-    - average_choice_count
-    - has_complete_solution
-  application: "현재는 측정·출력만 하며 생성 후보의 채택 여부를 변경하지 않는다."
-systems:
-  - SYS-STAGE-CATALOG
-  - SYS-PATH-RULE
-  - SYS-BOARD-STATE
-  - SYS-TOUCH-FEEDBACK
-  - SYS-ARROW-PLACEMENT
-  - SYS-DEPENDENCY-ANALYZER
-content:
-  stages: [STAGE-001, STAGE-002, STAGE-003]
-  generation: "각 스테이지는 고정 seed, 기본 화살 수, 길이 범위, 목표 빈칸 비율로 재현 가능한 보드를 생성한다."
-deferred: [DEFER-001, DEFER-002, DEFER-003, DEFER-004, DEFER-005, BALANCE-DEPENDENCY-TARGETING-005]
-verification:
-  automated: passed
-  mobile_manual: passed
-refs:
-  - ../sprints/dependency-difficulty-004/06-qa-handoff.md
-  - ../sprints/dependency-difficulty-004/08-sprint-closeout.yaml
+schema_version: 1
+track: game
+scope_id: game
+updated_at: 2026-08-03
+source_sprints:
+  - arrow-puzzle-prototype-001
+  - bent-arrow-generation-002
+  - arrow-balance-motion-003
+  - dependency-difficulty-004
+  - dependency-targeting-005
+  - board-foundation-006
+  - balance-authoring-007
+  - map-generation-mode-008
+title: "Pickup Arrow 현재 디자인"
+sections:
+  overview:
+    platform: mobile_touch
+    technology:
+      engine: Godot 4.7
+      language: GDScript
+  gameplay:
+    grid:
+      sizing: "각 스테이지는 양의 정수 width와 height로 고정된 유한한 직사각 격자를 사용한다."
+      runtime_expansion: false
+      size_policy: "99x99는 대표 대형 보드 검증 대상이고 한 변 999는 조건부 처리 대상이며 99999는 지원 목표가 아니다."
+      resource_guard: "한 변은 최대 999, width x height는 최대 10000이며 초과 입력은 데이터 생성 전에 거절한다."
+      unsafe_input_policy: "지원 자원 한도를 넘는 스테이지는 축소하지 않고 로드 또는 생성 전에 명시적으로 거절한다."
+    directions: [UP, DOWN, LEFT, RIGHT]
+    arrow_shape: "화살은 화살촉 칸부터 이어지는 스테이지별 길이 범위의 중복 없는 상하좌우 연결 몸통 칸으로 구성되며 꺾일 수 있다."
+    extraction: "화살촉은 지정 방향의 직선 경로로 이동하고 각 후위 몸통은 선행 몸통이 지나간 경로를 같은 속도로 따라가며, 마지막 몸통이 화면 밖으로 나간 뒤 제거된다."
+    path_collision: "화살촉 진행 1라인에 다른 화살 또는 자기 몸통이 있으면 이동할 수 없고, 라인 밖의 몸통은 차단하지 않는다."
+    extraction_speed_pixels_per_second: 1600.0
+    blocked_selection: "막힌 선택은 보드 상태를 유지하고 막힘 피드백을 표시한다."
+    clear_condition: "남은 화살이 없으면 보드가 완료된다."
+    progression: "검증된 로컬 밸런스 스냅샷의 stage_order 순서로 진행하고 마지막 등록 스테이지 완료 후 prototype-complete 상태가 된다."
+    board_mask:
+      default: "마스크가 없으면 width x height의 모든 셀이 배치 가능하다."
+      blocked_cell: "화살 생성과 수동 배치를 금지하고 화면에서 비활성 영역으로 표시한다."
+      extraction: "배치 불가 셀은 충돌체나 보드 경계가 아니며 화살은 해당 셀을 통과해 직사각 보드 외곽으로 추출된다."
+      validity: "마스크 범위 밖 좌표, 중복 좌표, 배치 가능 셀이 없는 보드, 배치 불가 셀을 점유한 화살은 거절한다."
+    board_navigation:
+      play_area: "현재 UI 기준 좌우 화면 전체, y=150부터 하단 90px 제외 지점까지의 최대 직사각 영역을 보드 clip과 입력 영역으로 사용한다."
+      default_scale: "가로 약 9칸이 보이는 셀 크기로 시작하고 넓어진 세로 공간에는 추가 행을 표시한다."
+      zoom:
+        range: [0.25, 2.0]
+        touch: "두 손가락 pinch 중점을 기준으로 확대·축소한다."
+        desktop: "mouse wheel cursor 위치를 기준으로 확대·축소한다."
+        focus_policy: "zoom 전후 focus 아래의 보드 좌표를 화면상 같은 위치에 유지한 뒤 보드 외곽으로 clamp한다."
+      pan: "기존 이동거리 임계값으로 tap과 drag를 구분하며 zoom 상태에서도 넘치는 축만 이동한다."
+      preview: "read-only preview는 pan·zoom을 허용하고 화살 선택·추출만 막는다."
+      clipping: "격자와 화살 몸통·연결부·화살촉을 모두 play_area 경계에서 절단한다."
+    map_generation_flow:
+      states: [home, generating, playing, generation_error]
+      loading: "random 맵 생성 중 입력을 잠그고 경과 시간을 나타내는 0~10초 게이지와 생성 중 상태를 표시한다."
+      timeout_seconds: 10
+      failure: "생성 실패나 제한시간 도달 시 부분 결과를 폐기하고 홈에 문제 메시지와 실패 스테이지 재시도를 표시한다."
+      retry: "재시도는 실패한 random 스테이지에 새 runtime seed로 진입한다."
+      late_result_policy: "취소되거나 만료된 생성 요청의 늦은 결과는 보드 상태에 적용하지 않는다."
+  generation:
+    map_modes:
+      profile_field: generation_mode
+      values: [fixed, random]
+      fixed: "확정 seed로 동일한 맵을 재현하며 preview에서만 다른 candidate seed를 반복 탐색한다."
+      random: "새 플레이마다 runtime seed에서 후보 탐색을 시작하고 snapshot의 base seed는 변경하지 않는다."
+      hard_validity: [resource_limit, non_overlapping_cells, complete_solution, no_deadlock]
+      difficulty_policy: "목표 지표 미달만으로 유효 맵을 거절하지 않는다."
+    length_ranges:
+      STAGE-001: [1, 6]
+      STAGE-002: [3, 10]
+      STAGE-003: [5, 14]
+    target_empty_ratios:
+      STAGE-001: 0.70
+      STAGE-002: 0.55
+      STAGE-003: 0.40
+    filler_max_length: 3
+    deterministic_seed: true
+    validity: "몸통이 겹치지 않고 자기 몸통이 화살촉 진행선을 막지 않으며 모든 화살을 제거할 수 있는 해결 순서가 존재해야 한다."
+    metrics: "목표·실제 빈칸 비율, 기본·보충 화살 수, 의존 분석 결과와 후보 선택 결과를 생성 스테이지에서 제공한다."
+    dependency_targeting:
+      candidate_seed_step: 1000003
+      max_candidate_attempts: 64
+      construction: "설정한 dependency depth 범위의 backbone을 먼저 구성하고 나머지 화살을 역순 제거 가능한 구조로 배치해 완전한 풀이를 보장한다."
+      scored_targets: [dependency_depth, initial_extractable_ratio]
+      observed_only: [forced_state_ratio, average_choice_count]
+      selection: "완전한 풀이 순서가 검증된 후보 중에서만 범위 충족 수와 범위까지의 거리가 가장 좋은 후보를 선택하고 동률이면 앞선 seed를 사용한다."
+      fallback: "목표 범위를 모두 만족하지 못해도 closest-valid 후보를 채택하고 실제 지표와 목표 미달 상태를 표시한다."
+      failure: "완전한 풀이 순서가 검증된 후보가 하나도 없으면 맵을 로드하지 않고 기존 board를 유지한 채 실패한다."
+      stage_targets:
+        STAGE-001:
+          dependency_depth: [2, 4]
+          initial_extractable_ratio: [0.50, 1.00]
+          forced_state_ratio: [0.00, 0.25]
+        STAGE-002:
+          dependency_depth: [3, 5]
+          initial_extractable_ratio: [0.30, 0.60]
+          forced_state_ratio: [0.10, 0.40]
+        STAGE-003:
+          dependency_depth: [4, 8]
+          initial_extractable_ratio: [0.00, 0.40]
+          forced_state_ratio: [0.20, 1.00]
+    board_space:
+      capacity_basis: "보드 용량, 목표 빈칸 비율, 배치 가능 여부는 width x height 전체가 아니라 마스크의 배치 가능 셀을 기준으로 계산한다."
+      placement: "화살촉과 모든 몸통 셀은 배치 가능 셀 안에 있어야 하며 몸통 연결도 배치 가능 인접 셀만 사용한다."
+      path_analysis: "해결 가능성 및 차단 분석은 스테이지별 직사각 grid_size를 사용하고 배치 불가 셀은 경로 판정에서 무시한다."
+      determinism: "동일한 스테이지 크기, 정규화 마스크, seed, 생성 프로필은 동일한 생성 결과를 만든다."
+  dependency_analysis:
+    graph_direction: "blocker → blocked"
+    deterministic_simulation: "남은 배열 순서에서 첫 추출 가능 화살을 제거한다."
+    metrics:
+      - dependency_depth
+      - initial_extractable_ratio
+      - forced_state_ratio
+      - average_choice_count
+      - has_complete_solution
+    application: "완전한 풀이와 무교착은 필수 조건이며 dependency depth와 초기 추출 가능 비율은 후보 점수, 강제 진행 비율과 평균 선택 수는 관찰값으로 사용한다."
+  balance:
+    authoring:
+      metric_catalog:
+        expected_difficulty_level:
+          type: int
+          range: [1, 100]
+          required: false
+          blank_policy: "미보정으로 표시하고 생성 조건에는 사용하지 않는다."
+          role: "운영자가 지정하는 예상 난이도 표식이며 자동 난이도 점수를 대체하지 않는다."
+        configurable_fields:
+          identity: [stage_id, stage_order, operator_note]
+          board: [grid_width, grid_height]
+          generation: [generation_mode, seed, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length]
+          dependency: [min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio]
+          budget: [max_candidate_attempts]
+        constraints:
+          unique: [stage_id, stage_order]
+          grid_side_range: [1, 999]
+          grid_cell_limit: 10000
+          ratio_range: [0.0, 1.0]
+          max_candidate_attempts_range: [1, 256]
+          literal_values_only: true
+        observed_metrics:
+          - node_count
+          - filler_arrow_count
+          - occupied_cell_count
+          - actual_empty_ratio
+          - edge_count
+          - dependency_depth
+          - initial_extractable_count
+          - initial_extractable_ratio
+          - forced_state_count
+          - forced_state_ratio
+          - average_choice_count
+          - choice_counts
+          - attempt_count
+          - selected_seed
+          - has_complete_solution
+        deferred_metrics:
+          - "새 후보 채택 조건"
+          - "형상·시각 지표"
+          - "고급 의존 지표"
+          - "플레이 제약 지표"
+      workflow:
+        canonical_source: "Google Sheets의 stage_profiles 탭"
+        schema_version: 2
+        tabs:
+          _meta:
+            columns: [key, value, description]
+            edit_policy: warning_protected
+          stage_profiles:
+            columns: [stage_id, stage_order, expected_difficulty_level, grid_width, grid_height, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio, max_candidate_attempts, operator_note]
+            data_start_row: 2
+            edit_policy: "헤더는 보호 경고, 운영 데이터는 편집 가능"
+          metric_guide:
+            columns: [metric_id, classification, group, value_type, required, allowed_range, default_value, stage_profiles_column, description]
+            classifications: [configurable, observed, deferred]
+            description_language: ko
+            edit_policy: warning_protected
+        migration: "v1의 기존 profile은 generation_mode=fixed로 채우고 initial content에 random STAGE-004를 추가한 뒤 v2로 검증·게시한다."
+        row_policy: "완전한 빈 행만 무시하고 부분 행·수식·임의 표준 열·중복 stage_id 또는 stage_order·지원하지 않는 generation_mode는 전체 게시를 거절한다."
+        stage_registry: "유효한 stage profile은 stage_order 순서로 등록하고 generation_mode에 따라 고정 또는 플레이별 생성한다."
+        operator_flow:
+          - "Apps Script 구조 마이그레이션으로 v2 열과 초기 random STAGE-004를 적용한다."
+          - "stage_profiles를 편집하고 데이터 검증으로 마지막 정상 JSON 게시본을 갱신한다."
+          - "로컬 Sync & Preview로 재검증·스냅샷 교체·스테이지 미리보기를 수행한다."
+          - "검토한 data/stage_balance.json을 포함해 게임을 다시 빌드·배포한다."
+        runtime_policy: "게임 런타임은 원격 시트나 웹 앱에 접속하지 않고 버전 관리된 로컬 스냅샷만 읽는다."
+        exclusions: [manual_csv_import, runtime_direct_google_access, preview_writeback_to_sheet, authored_fixed_arrow_layout]
+  systems:
+    active:
+      - SYS-STAGE-CATALOG
+      - SYS-PATH-RULE
+      - SYS-BOARD-STATE
+      - SYS-TOUCH-FEEDBACK
+      - SYS-ARROW-PLACEMENT
+      - SYS-DEPENDENCY-ANALYZER
+      - SYS-DEPENDENCY-TARGETING
+      - SYS-BOARD-VIEWPORT
+      - SYS-BALANCE-SHEET-LIFECYCLE
+      - SYS-BALANCE-SYNC
+      - SYS-STAGE-BALANCE-PREVIEW
+      - SYS-MAP-GENERATION-CONTROLLER
+    SYS-DEPENDENCY-TARGETING:
+      responsibility: "완전한 풀이가 검증된 후보만 대상으로 난이도 목표에 가장 가까운 후보를 선택하며 목표 미달은 관찰 상태로 반환한다."
+      input: [base_seed, placement_profile, dependency_target, max_candidate_attempts]
+      output: [arrows, solution_order, generation_metrics, dependency_analysis, dependency_targeting_metrics, error]
+      candidate_seed: "base_seed + candidate_index * 1000003"
+    SYS-STAGE-CATALOG:
+      dependency_targeting_output:
+        fields: [dependency_target, dependency_targeting_metrics, dependency_analysis]
+        behavior: "선택된 후보의 생성·분석 결과를 재분석 없이 스테이지 정의에 연결한다."
+      board_definition:
+        source_fields: [grid_size, mask_rows]
+        runtime_fields: [grid_size, blocked_cells]
+        mask_symbols: {playable: ".", blocked: "#"}
+        behavior: "스테이지별 크기와 도트 마스크를 검증하고 배치 불가 좌표를 행 우선 순서로 정규화해 생성기와 런타임 보드 상태에 전달한다."
+        error_policy: "잘못되거나 자원 한도를 넘는 정의는 기본값으로 대체하지 않고 오류로 거절한다."
+      balance_profile:
+        source: "SYS-BALANCE-SYNC가 생성한 data/stage_balance.json"
+        key: stage_id
+        loading: "schema_version 2, content_hash와 전체 profile을 검증하고 stage_order 순서의 immutable index를 구성한다."
+        fields: [stage_order, expected_difficulty_level, grid_size, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, dependency_target, max_candidate_attempts]
+        seed_policy: "fixed는 profile seed를 그대로 사용하고 random은 생성 controller가 제공한 runtime seed를 사용한다."
+        composition: "같은 stage_id의 별도 보드 콘텐츠가 있으면 결합하고 없으면 전체 직사각 보드로 생성한다."
+        error_policy: "스냅샷 누락·버전 불일치·잘못된 profile 또는 mode는 하드코딩 기본값으로 대체하지 않는다."
+    SYS-BOARD-VIEWPORT:
+      responsibility: "스테이지별 보드를 UI 제외 최대 영역에 표시하고 pan·focus zoom·전체 보드 geometry clipping·터치 선택 판정을 일관되게 관리한다."
+      input: [grid_size, blocked_cells, viewport_size, pointer_events, pinch_events, wheel_events, board_phase]
+      output: [board_transform, visible_cell_bounds, pan_offset, zoom_scale, clipped_geometry, tap_selection_request]
+    SYS-BALANCE-SHEET-LIFECYCLE:
+      responsibility: "Google Sheets 바인드 Apps Script가 최초 구성, 구조 마이그레이션과 데이터 검증을 수행한다."
+      execution_boundary: "현재 시트 편집자의 현재 문서 권한으로 실행하며 서비스 계정·JSON 키·Google Cloud Console을 사용하지 않는다."
+      menu: [최초 구성, 구조 마이그레이션, 데이터 검증]
+      setup: "빈 시트에 세 표준 탭과 fixed STAGE-001~003, random STAGE-004, 입력 검증과 보호 경고를 생성한다."
+      migration: "지원되는 v1 또는 부분 v2 구조를 백업·복구한 뒤 generation_mode를 포함한 schema_version 2로 변환한다."
+      validation: "필수 탭·헤더·리터럴·타입·범위·교차 필드·중복을 검사하고 셀 위치가 포함된 오류를 반환한다."
+      failure_policy: "부분 구성을 완료로 표시하지 않고 기존 지원 구조와 복구 가능한 백업을 보존한다."
+    SYS-BALANCE-SYNC:
+      responsibility: "Apps Script가 마지막 정상 밸런스 JSON을 읽기 전용으로 게시하고 로컬 도구가 재검증해 런타임 스냅샷을 저장한다."
+      publication:
+        trigger: "시트 메뉴의 데이터 검증 성공"
+        storage: "ScriptProperties Base64 chunk와 manifest"
+        payload_limit: 450000
+        failure_policy: "게시 실패 시 이전 정상 게시본을 복구한다."
+      endpoint:
+        method: GET
+        access: anonymous
+        execute_as: deployer
+        output: [schema_version, source_revision, content_hash, profiles]
+        excludes: [sheet_url, spreadsheet_id, operator_note, credentials, write_action]
+      local_sync:
+        input: [PICKUP_ARROW_SHEETS_URL]
+        validation: "schema_version, 전체 profile, 정렬과 canonical SHA-256 content_hash를 다시 검증한다."
+        atomicity: "검증된 임시 파일 기록이 끝난 뒤 data/stage_balance.json을 교체한다."
+      runtime_access: false
+      failure_policy: "네트워크·HTTP·JSON·스키마·값 실패 시 마지막 정상 로컬 스냅샷을 유지한다."
+    SYS-STAGE-BALANCE-PREVIEW:
+      responsibility: "동기화된 로컬 스냅샷으로 실제 생성 경로를 실행해 선택 스테이지의 보드와 설정·실측 난이도를 표시한다."
+      entry: "개발·운영용 balance_preview.tscn"
+      actions: [sync, select_stage, regenerate_fixed_candidate, regenerate_random, toggle_metrics]
+      displays: [snapshot_revision, content_hash, configured_metrics, observed_metrics, expected_difficulty_level, validation_error]
+      edit_policy: read_only
+      consistency: "게임 런타임과 같은 StageCatalog와 로컬 스냅샷을 사용한다."
+      failure_policy: "Sync 실패 시 마지막 정상 보드와 오류를 유지한다."
+      generation_mode_behavior:
+        displays: [generation_mode, base_seed, candidate_seed, runtime_seed, generation_elapsed_seconds, target_match, observed_metrics]
+        regenerate_fixed: "다음 candidate seed로 다른 배열을 생성하며 snapshot과 Sheets를 자동 변경하지 않는다."
+        adopt_fixed: "표시된 candidate seed를 운영자가 Sheets seed 열에 반영한 뒤 검증·sync한다."
+        regenerate_random: "새 runtime seed에서 closest-valid 후보 탐색을 다시 실행한다."
+      layout: "실측 지표는 기본 접힘 상태이며 필요할 때 토글하고 나머지 영역을 보드에 사용한다."
+    SYS-MAP-GENERATION-CONTROLLER:
+      responsibility: "stage profile의 generation_mode에 따라 결정적 또는 플레이별 seed로 비동기 맵 생성을 실행하고 진행·완료·실패·시간초과를 관리한다."
+      input: [stage_id, generation_mode, base_seed, generation_profile, request_id]
+      output: [progress, runtime_seed, stage_definition, failure, timeout]
+      timeout_seconds: 10
+      concurrency: "한 번에 하나의 활성 요청만 보드에 적용하며 취소·교체된 request_id의 결과는 폐기한다."
+  content:
+    stages: [STAGE-001, STAGE-002, STAGE-003, STAGE-004]
+    stage_registry: "STAGE-001~003은 fixed이고 STAGE-004는 실제 random profile이다."
+    generation: "모든 stage는 hard validity를 통과해야 하며 random은 목표 지표 미달 시에도 10초 안의 closest-valid 후보로 플레이를 시작한다."

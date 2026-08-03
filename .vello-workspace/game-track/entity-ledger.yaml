@@ -45,6 +45,57 @@ entities:
   - id: SYS-DEPENDENCY-ANALYZER
     type: system
     status: active
+  - id: SYS-DEPENDENCY-TARGETING
+    type: system
+    status: active
   - id: BALANCE-DEPENDENCY-TARGETING-005
     type: balance
-    status: deferred
+    status: active
+  - id: CORE-VARIABLE-BOARD-006
+    type: gameplay_rule
+    status: active
+  - id: CORE-BOARD-MASK-006
+    type: gameplay_rule
+    status: active
+  - id: FEATURE-BOARD-PAN-006
+    type: feature
+    status: active
+  - id: SYS-BOARD-VIEWPORT
+    type: system
+    status: active
+  - id: BALANCE-METRIC-CATALOG-007
+    type: balance
+    status: active
+  - id: FEATURE-GOOGLE-SHEETS-AUTHORING-007
+    type: feature
+    status: active
+  - id: SYS-BALANCE-SHEET-LIFECYCLE
+    type: system
+    status: active
+  - id: SYS-BALANCE-SYNC
+    type: system
+    status: active
+  - id: SYS-STAGE-BALANCE-PREVIEW
+    type: system
+    status: active
+  - id: FEATURE-MAP-GENERATION-MODE-008
+    type: feature
+    status: active
+  - id: FEATURE-RANDOM-MAP-PER-PLAY-008
+    type: feature
+    status: active
+  - id: FEATURE-MAP-GENERATION-WAIT-008
+    type: feature
+    status: active
+  - id: CONTENT-RANDOM-STAGE-004-008
+    type: content
+    status: active
+  - id: SYS-MAP-GENERATION-CONTROLLER
+    type: system
+    status: active
+  - id: FEATURE-FIXED-CANDIDATE-PREVIEW-008
+    type: feature
+    status: active
+  - id: FEATURE-BOARD-ZOOM-008
+    type: feature
+    status: active

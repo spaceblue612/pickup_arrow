@@ -1,0 +1,64 @@
+sprint_id: balance-authoring-007
+closed_at: 2026-08-03
+status: completed
+delivered:
+  - "BALANCE-METRIC-CATALOG-007: 19개 운영 입력 필드, 기대 난이도, 관찰·보류 메트릭 분류"
+  - "FEATURE-GOOGLE-SHEETS-AUTHORING-007: 세 표준 탭, 한글 metric_guide, Apps Script 구성·마이그레이션·검증"
+  - "SYS-BALANCE-SYNC: 익명 읽기 게시본, 로컬 재검증, 원자적 data/stage_balance.json 교체"
+  - "SYS-STAGE-CATALOG: stage_order 기반 동적 스테이지 등록과 immutable balance profile"
+  - "SYS-STAGE-BALANCE-PREVIEW: 실제 생성 경로의 읽기 전용 보드·설정·실측 미리보기"
+  - "QA-BALANCE-AUTHORING-007: Node·Godot 독립 QA와 실제 Google Sheets Sync & Preview 사용자 확인 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "다음 스프린트 범위를 선택한다."
+    - "새 밸런스 지표나 맵 콘텐츠가 필요할 때 별도 설계한다."
+  blockers: []
+  decisions_needed: []
+  deferred_items:
+    - "새 후보 채택 조건과 형상·시각·고급 의존·플레이 제약 지표"
+    - "preview에서 Google Sheets로 값을 다시 쓰는 기능"
+    - "전용 밸런스 편집기"
+    - "FEATURE-MAP-GENERATION-MODE-008: 고정 맵·랜덤 맵 선택"
+    - "Google Sheets의 mask_rows·고정 화살 배치 콘텐츠"
+  risks:
+    - "웹 앱 URL을 아는 사용자는 런타임용 밸런스 JSON을 읽을 수 있다."
+    - "Apps Script 게시 payload는 Base64 450000자 한도를 사용한다."
+    - "새 터미널에서 Sync를 실행할 때 PICKUP_ARROW_SHEETS_URL을 다시 설정해야 한다."
+    - "Code.gs 변경은 Apps Script 웹 앱의 새 배포 버전에 반영해야 한다."
+change_events:
+  - "BALANCE-METRIC-CATALOG-007: active"
+  - "FEATURE-GOOGLE-SHEETS-AUTHORING-007: active"
+  - "SYS-BALANCE-SHEET-LIFECYCLE: active"
+  - "SYS-BALANCE-SYNC: active"
+  - "SYS-STAGE-BALANCE-PREVIEW: active"
+  - "SYS-STAGE-CATALOG: balance profile과 stage_order registry 추가"
+  - "서비스 계정 기반 Sheets lifecycle·sync 계약: discarded"
+sot_delta:
+  applied:
+    - SOT-007-BALANCE-METRIC-CATALOG
+    - SOT-007-GOOGLE-SHEETS-AUTHORING
+    - SOT-007-BALANCE-SHEET-APPS-SCRIPT-LIFECYCLE
+    - SOT-007-BALANCE-APPS-SCRIPT-SYNC-SYSTEM
+    - SOT-007-STAGE-BALANCE-PREVIEW
+    - SOT-007-STAGE-CATALOG-BALANCE-CONTRACT
+  discarded:
+    - SOT-007-BALANCE-SHEET-LIFECYCLE-SYSTEM
+    - SOT-007-BALANCE-SYNC-SYSTEM
+  deferred: []
+sot_updates:
+  project_state:
+    - ../../project-state.yaml
+    - ../../sprint-index.yaml
+    - phase-progress.yaml
+    - sprint.yaml
+  current_design:
+    - ../../current-design/current-design.yaml
+  entity_ledger:
+    - ../../entity-ledger.yaml
+refs:
+  - sot-delta.yaml
+  - 06-qa-handoff.md
+  - 05-implementation-handoff.md
+  - 03-system-spec-handoff.md
+  - ../../current-design/current-design.yaml

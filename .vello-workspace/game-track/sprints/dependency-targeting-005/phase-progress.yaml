@@ -2,8 +2,8 @@ route: design_delta
 scope_authorization: confirmed
 groups:
   - id: EG-DEPENDENCY-TARGETING-005
-    status: qa_passed
+    status: completed
   - id: EG-LARGE-BOARD-TARGETING-005
-    status: qa_passed
-next_action: await_sprint_closeout_request
-sprint_status: active
+    status: completed
+next_action: sprint_completed
+sprint_status: completed

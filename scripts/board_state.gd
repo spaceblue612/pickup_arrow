@@ -23,17 +23,28 @@ var active_stage_id := ""
 var remaining_arrows: Array = []
 var phase := Phase.LOADING
 var pending_extraction_arrow_id := ""
-var _grid_size := Vector2i.ZERO
+var grid_size := Vector2i.ZERO
+var blocked_cells: Array[Vector2i] = []
 
 
 func load_stage(stage_id: String) -> Dictionary:
 	var stage_definition: Dictionary = STAGE_CATALOG.get_stage(stage_id)
 	if stage_definition.is_empty():
 		return _result("load_failed")
+	return load_stage_definition(stage_definition)
 
-	active_stage_id = stage_id
+
+func load_stage_definition(stage_definition: Dictionary) -> Dictionary:
+	var validation := STAGE_CATALOG.validate_stage(stage_definition)
+	if not validation["is_valid"]:
+		return _result("load_failed")
+
+	active_stage_id = stage_definition["id"]
 	remaining_arrows = stage_definition["arrows"].duplicate(true)
-	_grid_size = stage_definition["grid_size"]
+	grid_size = stage_definition["grid_size"]
+	blocked_cells.clear()
+	for cell: Vector2i in stage_definition.get("blocked_cells", []):
+		blocked_cells.append(cell)
 	pending_extraction_arrow_id = ""
 	phase = Phase.READY
 	_emit_state_changed()
@@ -44,7 +55,7 @@ func select_arrow(arrow_id: String) -> Dictionary:
 	if phase != Phase.READY:
 		return _result("input_ignored")
 
-	var path_result: Dictionary = PATH_RULE.evaluate(arrow_id, remaining_arrows, _grid_size)
+	var path_result: Dictionary = PATH_RULE.evaluate(arrow_id, remaining_arrows, grid_size)
 	if not path_result["error"].is_empty():
 		return _result("selection_invalid", path_result)
 	if not path_result["is_extractable"]:
@@ -79,14 +90,15 @@ func advance_after_clear() -> Dictionary:
 	if phase != Phase.CLEARED:
 		return _result("advance_ignored")
 
-	var current_index := STAGE_CATALOG.STAGE_IDS.find(active_stage_id)
-	if current_index < 0 or current_index == STAGE_CATALOG.STAGE_IDS.size() - 1:
+	var stage_ids := STAGE_CATALOG.get_stage_ids()
+	var current_index := stage_ids.find(active_stage_id)
+	if current_index < 0 or current_index == stage_ids.size() - 1:
 		phase = Phase.PROTOTYPE_COMPLETE
 		prototype_completed.emit()
 		_emit_state_changed()
 		return _result("prototype_complete")
 
-	var next_stage_id: String = STAGE_CATALOG.STAGE_IDS[current_index + 1]
+	var next_stage_id: String = stage_ids[current_index + 1]
 	next_stage_requested.emit(next_stage_id)
 	return load_stage(next_stage_id)
 
@@ -97,6 +109,8 @@ func get_state() -> Dictionary:
 		"remaining_arrow_ids": get_remaining_arrow_ids(),
 		"phase": phase,
 		"pending_extraction_arrow_id": pending_extraction_arrow_id,
+		"grid_size": grid_size,
+		"blocked_cells": blocked_cells.duplicate(),
 	}
 
 

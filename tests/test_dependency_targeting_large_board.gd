@@ -21,7 +21,6 @@ const LARGE_BOARD_CASES := [
 			"max_forced_state_ratio": 0.10,
 		},
 		"max_candidate_attempts": 8,
-		"expected_attempt_count": 3,
 		"minimum_node_count": 20,
 	},
 	{
@@ -42,7 +41,6 @@ const LARGE_BOARD_CASES := [
 			"max_forced_state_ratio": 0.20,
 		},
 		"max_candidate_attempts": 8,
-		"expected_attempt_count": 2,
 		"minimum_node_count": 20,
 	},
 ]
@@ -73,14 +71,12 @@ func _test_large_board_targeting(config: Dictionary) -> void:
 		"%s selected board satisfies every dependency target" % case_name
 	)
 	_expect(
-		targeting_metrics["attempt_count"] == config["expected_attempt_count"],
-		"%s rejects preceding out-of-range candidates" % case_name
+		targeting_metrics["attempt_count"] == 1,
+		"%s accepts the first exact constructed candidate" % case_name
 	)
 	_expect(
-		targeting_metrics["selected_seed"] == config["seed"] \
-			+ (targeting_metrics["attempt_count"] - 1) \
-				* DEPENDENCY_TARGETING.CANDIDATE_SEED_STEP,
-		"%s selected seed follows the deterministic sequence" % case_name
+		targeting_metrics["selected_seed"] == config["seed"],
+		"%s exact constructed candidate keeps the base seed" % case_name
 	)
 	_expect(first["arrows"] == second["arrows"], "%s arrows are deterministic" % case_name)
 	_expect(

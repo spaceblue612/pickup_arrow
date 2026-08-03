@@ -1,0 +1,13 @@
+sprint_id: map-generation-mode-008
+track: game
+route: full
+status: completed
+started_at: 2026-08-03
+closed_at: 2026-08-03
+title: "고정·랜덤 맵 생성 모드"
+scope_authorization: confirmed
+scope:
+  - FEATURE-MAP-GENERATION-MODE-008
+  - FEATURE-RANDOM-MAP-PER-PLAY-008
+  - FEATURE-MAP-GENERATION-WAIT-008
+  - CONTENT-RANDOM-STAGE-004-008

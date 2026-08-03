@@ -1,0 +1,19 @@
+route: full
+scope_authorization: confirmed
+groups:
+  - id: EG-BALANCE-SCHEMA-V2-008
+    status: completed
+  - id: EG-MAP-GENERATION-CONTROLLER-008
+    status: completed
+  - id: EG-RANDOM-STAGE-GAME-FLOW-008
+    status: completed
+  - id: EG-BALANCE-PREVIEW-MODE-008
+    status: completed
+  - id: EG-DIFFICULTY-TARGETING-V2-008
+    status: completed
+  - id: EG-FIXED-CANDIDATE-PREVIEW-V2-008
+    status: completed
+  - id: EG-BOARD-VIEWPORT-ZOOM-V2-008
+    status: completed
+next_action: start_next_sprint
+sprint_status: completed

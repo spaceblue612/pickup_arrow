@@ -1,0 +1,88 @@
+sprint_id: board-foundation-006
+base_sot_ref: ../../current-design/current-design.yaml
+updated_at: 2026-08-02
+updates:
+  - id: SOT-006-VARIABLE-BOARD-RULE
+    target: sections.gameplay.grid
+    operation: replace
+    content:
+      value:
+        sizing: "각 스테이지는 양의 정수 width와 height로 고정된 유한한 직사각 격자를 사용한다."
+        runtime_expansion: false
+        size_policy: "99x99는 대표 대형 보드 검증 대상이고 한 변 999는 조건부 처리 대상이며 99999는 지원 목표가 아니다."
+        resource_guard: "한 변은 최대 999, width x height는 최대 10000이며 초과 입력은 데이터 생성 전에 거절한다."
+        unsafe_input_policy: "지원 자원 한도를 넘는 스테이지는 축소하지 않고 로드 또는 생성 전에 명시적으로 거절한다."
+    status: verified
+    verification_mode: independent_qa
+    evidence: [05-implementation-handoff.md, 06-qa-handoff.md]
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-006-BOARD-MASK-RULE
+    target: sections.gameplay.board_mask
+    operation: add
+    content:
+      default: "마스크가 없으면 width x height의 모든 셀이 배치 가능하다."
+      blocked_cell: "화살 생성과 수동 배치를 금지하고 화면에서 비활성 영역으로 표시한다."
+      extraction: "배치 불가 셀은 충돌체나 보드 경계가 아니며 화살은 해당 셀을 통과해 직사각 보드 외곽으로 추출된다."
+      validity: "마스크 범위 밖 좌표, 중복 좌표, 배치 가능 셀이 없는 보드, 배치 불가 셀을 점유한 화살은 거절한다."
+    status: verified
+    verification_mode: independent_qa
+    evidence: [05-implementation-handoff.md, 06-qa-handoff.md]
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-006-BOARD-NAVIGATION-RULE
+    target: sections.gameplay.board_navigation
+    operation: add
+    content:
+      cell_scale: "기존 9x9 보드의 셀 크기를 화면별 기준으로 사용하고 보드 전체를 맞추기 위해 셀을 추가 축소하지 않는다."
+      fit_behavior: "플레이 영역 안에 들어오는 축은 가운데 정렬하고 넘치는 축만 이동할 수 있다."
+      initial_view: "스테이지 로드 시 직사각 보드 중심을 플레이 영역 중심에 맞춘다."
+      gesture: "누른 뒤 이동거리가 임계값 미만이면 화살 선택, 임계값 이상이면 선택을 취소하고 보드 드래그로 처리한다."
+      drag_surface: "배치 가능 셀, 배치 불가 셀, 화살을 포함한 보드 영역 전체에서 드래그할 수 있다."
+      bounds: "드래그 위치를 보드 외곽에 고정해 플레이 영역 전체가 보드 밖으로 벗어나지 않게 한다."
+      phase_policy: "기존 추출 중 입력 잠금을 유지하고 READY 상태에서만 선택과 보드 이동을 받는다."
+    status: user_accepted
+    verification_mode: user_check
+    evidence: [05-implementation-handoff.md, 06-qa-handoff.md, status-log.md]
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-006-GENERATION-MASK-CONTRACT
+    target: sections.generation.board_space
+    operation: add
+    content:
+      capacity_basis: "보드 용량, 목표 빈칸 비율, 배치 가능 여부는 width x height 전체가 아니라 마스크의 배치 가능 셀을 기준으로 계산한다."
+      placement: "화살촉과 모든 몸통 셀은 배치 가능 셀 안에 있어야 하며 몸통 연결도 배치 가능 인접 셀만 사용한다."
+      path_analysis: "해결 가능성 및 차단 분석은 스테이지별 직사각 grid_size를 사용하고 배치 불가 셀은 경로 판정에서 무시한다."
+      determinism: "동일한 스테이지 크기, 정규화 마스크, seed, 생성 프로필은 동일한 생성 결과를 만든다."
+    status: verified
+    verification_mode: independent_qa
+    evidence: [05-implementation-handoff.md, 06-qa-handoff.md]
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-006-BOARD-VIEWPORT-SYSTEM
+    target: sections.systems.SYS-BOARD-VIEWPORT
+    operation: add
+    content:
+      responsibility: "스테이지별 보드 크기와 마스크를 화면 좌표로 변환하고 가시 셀만 표시하며 표시 범위, 드래그 오프셋, 터치 선택 판정을 일관되게 관리한다."
+      input: [grid_size, blocked_cells, viewport_size, pointer_events, board_phase]
+      output: [board_transform, visible_cell_bounds, pan_offset, tap_selection_request]
+    status: user_accepted
+    verification_mode: user_check
+    evidence: [05-implementation-handoff.md, 06-qa-handoff.md, status-log.md]
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-006-STAGE-CATALOG-BOARD-CONTRACT
+    target: sections.systems.SYS-STAGE-CATALOG.board_definition
+    operation: add
+    content:
+      source_fields: [grid_size, mask_rows]
+      runtime_fields: [grid_size, blocked_cells]
+      mask_symbols: {playable: ".", blocked: "#"}
+      behavior: "스테이지별 크기와 도트 마스크를 검증하고 배치 불가 좌표를 행 우선 순서로 정규화해 생성기와 런타임 보드 상태에 전달한다."
+      error_policy: "잘못되거나 자원 한도를 넘는 정의는 기본값으로 대체하지 않고 오류로 거절한다."
+    status: verified
+    verification_mode: independent_qa
+    evidence: [05-implementation-handoff.md, 06-qa-handoff.md]
+    replaces: []
+    closeout_disposition: apply
+unresolved: []

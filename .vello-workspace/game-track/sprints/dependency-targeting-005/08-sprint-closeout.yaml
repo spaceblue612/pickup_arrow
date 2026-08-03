@@ -1,0 +1,48 @@
+sprint_id: dependency-targeting-005
+closed_at: 2026-08-02
+status: completed
+delivered:
+  - "BALANCE-DEPENDENCY-TARGETING-005: STAGE-001~003 의존 난이도 목표 프로필과 최대 64개 후보 정책"
+  - "SYS-DEPENDENCY-TARGETING: 결정적 후보 생성·분석·첫 일치 후보 채택"
+  - "SYS-STAGE-CATALOG: dependency_target, dependency_targeting_metrics, dependency_analysis 공개"
+  - "QA-DEPENDENCY-TARGETING-005: 9x9·12x12·15x15 결정성, 목표 범위, 완전 해결 및 전체 회귀 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "실제 플레이 데이터가 확보되면 스테이지별 의존 목표 범위 자동 보정 필요성을 별도 검토한다."
+    - "런타임 생성 시간이 플레이 흐름에 영향을 줄 경우 비동기 후보 생성을 별도 검토한다."
+  blockers: []
+  decisions_needed: []
+  deferred_items:
+    - "실제 플레이 데이터 기반 목표 범위 자동 보정"
+    - "런타임 비동기 후보 생성"
+  risks:
+    - "보드가 커지거나 목표 범위가 좁아지면 동기 후보 생성 비용이 증가할 수 있다."
+change_events:
+  - "BALANCE-DEPENDENCY-TARGETING-005: deferred → active"
+  - "SYS-DEPENDENCY-TARGETING: active"
+  - "SYS-DEPENDENCY-ANALYZER: candidate selection에 적용"
+  - "SYS-STAGE-CATALOG: dependency targeting 출력 추가"
+sot_delta:
+  applied:
+    - SOT-005-DEPENDENCY-TARGET-PROFILES
+    - SOT-005-DEPENDENCY-APPLICATION
+    - SOT-005-DEPENDENCY-TARGETING-SYSTEM
+    - SOT-005-STAGE-CATALOG-OUTPUT
+  discarded: []
+  deferred: []
+sot_updates:
+  project_state:
+    - ../../project-state.yaml
+    - ../../sprint-index.yaml
+    - phase-progress.yaml
+  current_design:
+    - ../../current-design/current-design.yaml
+  entity_ledger:
+    - ../../entity-ledger.yaml
+refs:
+  - sot-delta.yaml
+  - 06-qa-handoff.md
+  - 05-implementation-handoff.md
+  - 03-system-spec-handoff.md
+  - ../../current-design/current-design.yaml

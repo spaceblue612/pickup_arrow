@@ -1,0 +1,68 @@
+sprint_id: map-generation-mode-008
+closed_at: 2026-08-03
+status: completed
+delivered:
+  - "FEATURE-MAP-GENERATION-MODE-008: fixed·random 생성 모드와 seed 정책"
+  - "SYS-MAP-GENERATION-CONTROLLER: 진행 표시, 10초 제한, 실패·재시도와 stale 결과 폐기"
+  - "CONTENT-RANDOM-STAGE-004-008: 새 플레이마다 다시 생성되는 실제 random 스테이지"
+  - "DIFFICULTY-TARGETING-V2: 완전 풀이 hard gate와 closest-valid 난이도 후보 선택"
+  - "FEATURE-FIXED-CANDIDATE-PREVIEW-008: fixed 후보 seed·배열 반복 생성과 수동 채택 흐름"
+  - "FEATURE-BOARD-ZOOM-008: 확장 보드 영역, pan·pinch·wheel zoom, 격자·화살 전체 clipping"
+  - "BALANCE-SHEET-SCHEMA-V2: generation_mode와 STAGE-004를 포함한 Sheets 마이그레이션·검증·sync"
+not_delivered: []
+carry_forward:
+  required_next_actions:
+    - "다음 스프린트 범위를 선택한다."
+  blockers: []
+  decisions_needed: []
+  deferred_items:
+    - "정식 홈 화면 이동과 스테이지 선택 UX"
+    - "preview 후보 seed의 Google Sheets 자동 writeback"
+    - "고정 스테이지의 수동 화살 배치 snapshot"
+    - "min_length·max_length만으로 길이 분포 조정이 부족할 때 primary 길이 가중치 필드 추가"
+  risks:
+    - "Code.gs 변경은 기존 Apps Script 웹 앱 배포를 새 버전으로 갱신해야 한다."
+    - "새 터미널에서 sync할 때 PICKUP_ARROW_SHEETS_URL 설정이 필요하다."
+change_events:
+  - "FEATURE-MAP-GENERATION-MODE-008: active"
+  - "FEATURE-RANDOM-MAP-PER-PLAY-008: active"
+  - "FEATURE-MAP-GENERATION-WAIT-008: active"
+  - "CONTENT-RANDOM-STAGE-004-008: active"
+  - "SYS-MAP-GENERATION-CONTROLLER: active"
+  - "FEATURE-FIXED-CANDIDATE-PREVIEW-008: active"
+  - "FEATURE-BOARD-ZOOM-008: active"
+  - "난이도 목표 hard reject와 초기 fixed 재생성·random 스테이지 안: superseded"
+sot_delta:
+  applied:
+    - SOT-008-MAP-GENERATION-FLOW
+    - SOT-008-BALANCE-GENERATION-MODE-FIELD
+    - SOT-008-BALANCE-SHEET-SCHEMA-V2
+    - SOT-008-STAGE-CATALOG-MODE-CONTRACT
+    - SOT-008-MAP-GENERATION-CONTROLLER
+    - SOT-008-MAP-GENERATION-MODE-RULE-V2
+    - SOT-008-DIFFICULTY-TARGETING-V2
+    - SOT-008-BALANCE-PREVIEW-MODE-V2
+    - SOT-008-RANDOM-STAGE-004-V2
+    - SOT-008-BOARD-VIEWPORT-NAVIGATION-V2
+  discarded:
+    - SOT-008-MAP-GENERATION-MODE-RULE
+    - SOT-008-BALANCE-PREVIEW-MODE
+    - SOT-008-RANDOM-STAGE-004
+  deferred: []
+sot_updates:
+  project_state:
+    - ../../project-state.yaml
+    - ../../sprint-index.yaml
+    - phase-progress.yaml
+    - sprint.yaml
+  current_design:
+    - ../../current-design/current-design.yaml
+  entity_ledger:
+    - ../../entity-ledger.yaml
+refs:
+  - sot-delta.yaml
+  - 06-qa-handoff.md
+  - 05-implementation-handoff.md
+  - 02-design-handoff.md
+  - status-log.md
+  - ../../current-design/current-design.yaml

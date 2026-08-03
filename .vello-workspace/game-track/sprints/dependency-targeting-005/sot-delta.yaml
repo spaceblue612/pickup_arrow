@@ -1,0 +1,70 @@
+sprint_id: dependency-targeting-005
+base_sot_ref: ../../current-design/current-design.yaml
+updated_at: 2026-08-02
+updates:
+  - id: SOT-005-DEPENDENCY-TARGET-PROFILES
+    target: sections.generation.dependency_targeting
+    operation: add
+    content:
+      candidate_seed_step: 1000003
+      max_candidate_attempts: 64
+      selection: "후보를 seed 순서대로 생성·분석하고 dependency_depth, initial_extractable_ratio, forced_state_ratio의 inclusive 목표 범위를 모두 만족하는 첫 보드를 채택한다."
+      failure_policy: "잘못된 목표는 생성 전에 실패하고, 유효한 후보가 한도 안에 없으면 범위 밖 후보를 채택하지 않고 스테이지 생성 실패를 반환한다."
+      observed_metric: average_choice_count
+      stage_targets:
+        STAGE-001:
+          dependency_depth: [2, 4]
+          initial_extractable_ratio: [0.50, 1.00]
+          forced_state_ratio: [0.00, 0.25]
+        STAGE-002:
+          dependency_depth: [3, 5]
+          initial_extractable_ratio: [0.30, 0.60]
+          forced_state_ratio: [0.10, 0.40]
+        STAGE-003:
+          dependency_depth: [4, 8]
+          initial_extractable_ratio: [0.00, 0.40]
+          forced_state_ratio: [0.20, 1.00]
+    status: verified
+    verification_mode: independent_qa
+    evidence:
+      - 06-qa-handoff.md
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-005-DEPENDENCY-APPLICATION
+    target: sections.dependency_analysis.application
+    operation: replace
+    content:
+      value: "분석 결과는 생성 후보의 채택 조건으로 사용하며, 세 목표 지표를 모두 만족한 첫 후보만 스테이지로 확정한다."
+    status: verified
+    verification_mode: independent_qa
+    evidence:
+      - 06-qa-handoff.md
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-005-DEPENDENCY-TARGETING-SYSTEM
+    target: sections.systems.SYS-DEPENDENCY-TARGETING
+    operation: add
+    content:
+      responsibility: "기준 seed와 기존 배치 프로필로 결정적 후보를 생성하고 의존 분석 결과가 목표 프로필에 맞는 첫 후보를 선택한다."
+      input: [base_seed, placement_profile, dependency_target, max_candidate_attempts]
+      output: [arrows, solution_order, generation_metrics, dependency_analysis, dependency_targeting_metrics, error]
+      candidate_seed: "base_seed + candidate_index * 1000003"
+    status: verified
+    verification_mode: independent_qa
+    evidence:
+      - 06-qa-handoff.md
+    replaces: []
+    closeout_disposition: apply
+  - id: SOT-005-STAGE-CATALOG-OUTPUT
+    target: sections.systems.SYS-STAGE-CATALOG.dependency_targeting_output
+    operation: add
+    content:
+      fields: [dependency_target, dependency_targeting_metrics, dependency_analysis]
+      behavior: "선택된 후보의 생성·분석 결과를 재분석 없이 스테이지 정의에 연결한다."
+    status: verified
+    verification_mode: independent_qa
+    evidence:
+      - 06-qa-handoff.md
+    replaces: []
+    closeout_disposition: apply
+unresolved: []

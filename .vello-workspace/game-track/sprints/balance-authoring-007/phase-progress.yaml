@@ -1,0 +1,17 @@
+route: full
+scope_authorization: confirmed
+groups:
+  - id: EG-BALANCE-SCHEMA-CORE-007
+    status: completed
+  - id: EG-GOOGLE-SHEETS-CLI-007
+    status: superseded
+  - id: EG-DYNAMIC-STAGE-CATALOG-007
+    status: completed
+  - id: EG-STAGE-BALANCE-PREVIEW-007
+    status: completed
+  - id: EG-APPS-SCRIPT-SHEET-007
+    status: completed
+  - id: EG-APPS-SCRIPT-LOCAL-SYNC-007
+    status: completed
+next_action: closed
+sprint_status: completed

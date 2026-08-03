@@ -24,16 +24,20 @@ func _run() -> void:
 
 
 func _test_touch_hit_and_blocked_feedback(game) -> void:
-	var blocked_arrow_id := _find_blocked_arrow_id(game.board_state.remaining_arrows)
-	var body_positions: PackedVector2Array = game.get_arrow_screen_positions(blocked_arrow_id)
-	_expect(not body_positions.is_empty(), "Blocked arrow has selectable body cells")
-	var body_position: Vector2 = body_positions[-1]
+	var blocked_touch := _find_visible_blocked_touch(game)
+	var blocked_arrow_id: String = blocked_touch.get("arrow_id", "")
+	var body_position: Vector2 = blocked_touch.get("position", Vector2.ZERO)
+	_expect(not blocked_arrow_id.is_empty(), "A blocked arrow has a visible selectable body cell")
 	_expect(game.get_arrow_id_at_position(body_position) == blocked_arrow_id, "Touch hit-testing finds a bent body cell")
 	_expect(game.get_arrow_id_at_position(Vector2.ZERO).is_empty(), "Touch hit-testing ignores empty space")
 	var touch := InputEventScreenTouch.new()
 	touch.position = body_position
 	touch.pressed = true
 	game._unhandled_input(touch)
+	var release := InputEventScreenTouch.new()
+	release.position = body_position
+	release.pressed = false
+	game._unhandled_input(release)
 	_expect(game.blocked_arrow_id == blocked_arrow_id, "Blocked feedback identifies selected arrow")
 	_expect(game.board_state.phase == BOARD_STATE.Phase.READY, "Blocked touch preserves READY phase")
 
@@ -104,7 +108,9 @@ func _test_runtime_snake_motion() -> void:
 		"direction": "RIGHT",
 	}
 	game.board_state.remaining_arrows = [bent_arrow]
+	game.board_state.grid_size = Vector2i(9, 9)
 	game.board_state.phase = BOARD_STATE.Phase.READY
+	game.flow_state = GAME.FlowState.PLAYING
 	game.extraction_speed_pixels_per_second = 4000.0
 	var motion: Dictionary = game.get_extraction_motion("SNAKE")
 	_expect(
@@ -148,11 +154,16 @@ func _test_stage_flow(game) -> void:
 	_expect(game.board_state.active_stage_id == "STAGE-002", "Next stage is loaded")
 
 
-func _find_blocked_arrow_id(arrows: Array) -> String:
+func _find_visible_blocked_touch(game) -> Dictionary:
+	var arrows: Array = game.board_state.remaining_arrows
 	for arrow_data: Dictionary in arrows:
-		if not PATH_RULE.evaluate(arrow_data["id"], arrows, STAGE_CATALOG.GRID_SIZE)["is_extractable"]:
-			return arrow_data["id"]
-	return ""
+		var arrow_id: String = arrow_data["id"]
+		if PATH_RULE.evaluate(arrow_id, arrows, game.board_state.grid_size)["is_extractable"]:
+			continue
+		for position: Vector2 in game.get_arrow_screen_positions(arrow_id):
+			if game.get_arrow_id_at_position(position) == arrow_id:
+				return {"arrow_id": arrow_id, "position": position}
+	return {}
 
 
 func _expect(condition: bool, message: String) -> void:

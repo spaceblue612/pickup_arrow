@@ -104,7 +104,8 @@ func _test_board_state_transitions() -> void:
 
 func _test_valid_solution_orders() -> void:
 	var board = BOARD_STATE.new()
-	for stage_id: String in STAGE_CATALOG.STAGE_IDS:
+	var stage_ids := STAGE_CATALOG.get_stage_ids()
+	for stage_id: String in stage_ids:
 		var stage_definition: Dictionary = STAGE_CATALOG.get_stage(stage_id)
 		var solution_order: PackedStringArray = stage_definition["solution_order"]
 		_expect(board.load_stage(stage_id)["event"] == "stage_loaded", "%s loads for solution test" % stage_id)
@@ -116,11 +117,11 @@ func _test_valid_solution_orders() -> void:
 			else:
 				_expect(completion["event"] == "extraction_completed", "%s continues after %s" % [stage_id, arrow_id])
 
-		if stage_id == "STAGE-003":
+		if stage_id == stage_ids[-1]:
 			_expect(board.advance_after_clear()["event"] == "prototype_complete", "Final stage reaches prototype complete")
 		else:
-			var next_stage_index := STAGE_CATALOG.STAGE_IDS.find(stage_id) + 1
-			var expected_next_stage: String = STAGE_CATALOG.STAGE_IDS[next_stage_index]
+			var next_stage_index := stage_ids.find(stage_id) + 1
+			var expected_next_stage: String = stage_ids[next_stage_index]
 			_expect(board.advance_after_clear()["event"] == "stage_loaded", "%s advances" % stage_id)
 			_expect(board.active_stage_id == expected_next_stage, "%s advances to its immediate next stage" % stage_id)
 
