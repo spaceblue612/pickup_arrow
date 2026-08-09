@@ -15,6 +15,10 @@ const EXTRACTING_COLOR := Color("ffd166")
 const BLOCKED_COLOR := Color("ff6b6b")
 const TEXT_COLOR := Color("eef4ff")
 const WHEEL_ZOOM_FACTOR := 1.15
+const HOME_LIST_ITEM_HEIGHT := 120.0
+const HOME_LIST_ITEM_GAP := 14.0
+const HOME_LIST_BOTTOM_MARGIN := 64.0
+const HOME_LIST_WHEEL_STEP := 88.0
 
 enum FlowState {
 	HOME,
@@ -48,6 +52,12 @@ var last_runtime_seed := -1
 var generation_controller: Node
 var active_stage_definition: Dictionary = {}
 var _active_touches: Dictionary = {}
+var home_stage_summaries: Dictionary = {}
+var home_list_scroll_offset := 0.0
+var home_list_pointer_active := false
+var home_list_pointer_start := Vector2.ZERO
+var home_list_scroll_start := 0.0
+var home_list_dragged := false
 
 
 func _ready() -> void:
@@ -55,6 +65,7 @@ func _ready() -> void:
 	if STAGE_CATALOG.get_stage_ids().is_empty():
 		show_home("Balance snapshot failed to load")
 	else:
+		_warm_home_stage_summaries()
 		show_home()
 
 
@@ -75,6 +86,9 @@ func show_home(error_message: String = "", failed_stage_id: String = "") -> void
 	generation_stage_id = ""
 	generation_wait_ratio = 0.0
 	generation_elapsed_seconds = 0.0
+	home_list_scroll_offset = 0.0
+	home_list_pointer_active = false
+	home_list_dragged = false
 	board_view.cancel_pointer()
 	board_view.end_pinch()
 	_active_touches.clear()
@@ -87,15 +101,15 @@ func start_game() -> Dictionary:
 		show_home("Balance snapshot failed to load")
 		return {"event": "load_failed"}
 	var stage_id := retry_stage_id if not retry_stage_id.is_empty() else stage_ids[0]
+	return start_stage(stage_id)
+
+
+func start_stage(stage_id: String) -> Dictionary:
+	if STAGE_CATALOG.get_stage_profile(stage_id).is_empty():
+		return {"event": "load_failed"}
 	home_error_message = ""
 	retry_stage_id = ""
 	return request_stage(stage_id)
-
-
-func start_developer_random_stage() -> Dictionary:
-	if not developer_checks_enabled:
-		return {"event": "developer_check_unavailable"}
-	return request_stage("STAGE-004")
 
 
 func request_stage(
@@ -140,6 +154,7 @@ func load_stage(stage_id: String) -> Dictionary:
 	var result: Dictionary = board_state.load_stage_definition(stage_definition)
 	if result["event"] == "stage_loaded":
 		active_stage_definition = stage_definition.duplicate(true)
+		_cache_home_stage_summary(stage_definition)
 		flow_state = FlowState.PLAYING
 		last_runtime_seed = int(STAGE_CATALOG.get_stage_profile(stage_id)["seed"])
 		_configure_board_view()
@@ -349,11 +364,12 @@ func _draw() -> void:
 func _draw_home(viewport_dimensions: Vector2) -> void:
 	var font := ThemeDB.fallback_font
 	var center_x := viewport_dimensions.x * 0.5
-	draw_string(font, Vector2(center_x - 150.0, 180.0), "PICKUP ARROW", HORIZONTAL_ALIGNMENT_CENTER, 300.0, 38, TEXT_COLOR)
+	draw_string(font, Vector2(center_x - 200.0, 150.0), "STAGE LIST", HORIZONTAL_ALIGNMENT_CENTER, 400.0, 38, TEXT_COLOR)
+	draw_string(font, Vector2(center_x - 220.0, 194.0), "Choose a stage to play", HORIZONTAL_ALIGNMENT_CENTER, 440.0, 21, Color("a9b8d6"))
 	if not home_error_message.is_empty():
 		draw_multiline_string(
 			font,
-			Vector2(center_x - 240.0, 270.0),
+			Vector2(center_x - 240.0, 242.0),
 			home_error_message,
 			HORIZONTAL_ALIGNMENT_CENTER,
 			480.0,
@@ -361,23 +377,61 @@ func _draw_home(viewport_dimensions: Vector2) -> void:
 			-1,
 			Color("ffb4a9")
 		)
-	var button := _home_button_rect(viewport_dimensions)
-	draw_rect(button, ARROW_COLOR, true)
-	var label := "RETRY %s" % retry_stage_id if not retry_stage_id.is_empty() else "START"
-	draw_string(font, button.position + Vector2(0.0, 52.0), label, HORIZONTAL_ALIGNMENT_CENTER, button.size.x, 25, BACKGROUND_COLOR)
-	if developer_checks_enabled:
-		var developer_button := _developer_stage_button_rect(viewport_dimensions)
-		draw_rect(developer_button, BOARD_COLOR, true)
-		draw_rect(developer_button, ARROW_COLOR, false, 2.0)
-		draw_string(
-			font,
-			developer_button.position + Vector2(0.0, 48.0),
-			"TEST STAGE-004",
-			HORIZONTAL_ALIGNMENT_CENTER,
-			developer_button.size.x,
-			22,
-			TEXT_COLOR
-		)
+	var list_rect := _home_list_rect(viewport_dimensions)
+	draw_rect(list_rect, Color("121a2a"), true)
+	for stage_id: String in STAGE_CATALOG.get_stage_ids():
+		var button := _home_stage_button_rect(stage_id, viewport_dimensions)
+		var visible_button := button.intersection(list_rect)
+		if not visible_button.has_area():
+			continue
+		var profile := STAGE_CATALOG.get_stage_profile(stage_id)
+		var summary := get_home_stage_summary(stage_id)
+		var grid_size: Vector2i = profile["grid_size"]
+		var generation_mode_label := _generation_mode_label(profile["generation_mode"])
+		var actual_empty_label := "-" if summary.is_empty() else _percent_label(summary["actual_empty_ratio"])
+		var initial_extractable_label := "-" if summary.is_empty() else _percent_label(summary["initial_extractable_ratio"])
+		draw_rect(visible_button, BOARD_COLOR, true)
+		if visible_button == button:
+			draw_rect(button, ARROW_COLOR, false, 2.0)
+		var title_position := button.position + Vector2(24.0, 31.0)
+		if list_rect.has_point(title_position):
+			draw_string(
+				font,
+				title_position,
+				"%s · %s" % [stage_id, generation_mode_label],
+				HORIZONTAL_ALIGNMENT_LEFT,
+				button.size.x - 160.0,
+				25,
+				TEXT_COLOR
+			)
+		var metrics_position := button.position + Vector2(24.0, 64.0)
+		if list_rect.has_point(metrics_position):
+			draw_string(
+				font,
+				metrics_position,
+				"크기 %d×%d · 목표 %s · 실제 %s" % [
+					grid_size.x,
+					grid_size.y,
+					_percent_label(profile["target_empty_ratio"]),
+					actual_empty_label,
+				],
+				HORIZONTAL_ALIGNMENT_LEFT,
+				button.size.x - 48.0,
+				16,
+				Color("a9b8d6")
+			)
+		var initial_position := button.position + Vector2(24.0, 94.0)
+		if list_rect.has_point(initial_position):
+			draw_string(
+				font,
+				initial_position,
+				"초기 가능 %s" % initial_extractable_label,
+				HORIZONTAL_ALIGNMENT_LEFT,
+				button.size.x - 48.0,
+				16,
+				Color("a9b8d6")
+			)
+	_draw_home_list_scroll_indicator(list_rect, viewport_dimensions)
 
 
 func _draw_generation_wait(viewport_dimensions: Vector2) -> void:
@@ -391,29 +445,166 @@ func _draw_generation_wait(viewport_dimensions: Vector2) -> void:
 
 
 func _handle_home_input(event: InputEvent) -> void:
-	var released := false
-	var position := Vector2.ZERO
-	if event is InputEventScreenTouch and not event.pressed:
-		released = true
-		position = event.position
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
-		released = true
-		position = event.position
-	if released:
-		var viewport_dimensions := _viewport_size()
-		if developer_checks_enabled \
-				and _developer_stage_button_rect(viewport_dimensions).has_point(position):
-			start_developer_random_stage()
-		elif _home_button_rect(viewport_dimensions).has_point(position):
-			start_game()
+	var viewport_dimensions := _viewport_size()
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_begin_home_list_pointer(event.position, viewport_dimensions)
+		else:
+			_finish_home_list_pointer(event.position, viewport_dimensions)
+	elif event is InputEventScreenDrag:
+		_update_home_list_pointer(event.position, viewport_dimensions)
+	elif event is InputEventMouseButton \
+			and (event.button_index == MOUSE_BUTTON_WHEEL_UP \
+				or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		if event.pressed and _home_list_rect(viewport_dimensions).has_point(event.position):
+			var direction := -1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0
+			_scroll_home_list(direction * HOME_LIST_WHEEL_STEP, viewport_dimensions)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_begin_home_list_pointer(event.position, viewport_dimensions)
+		else:
+			_finish_home_list_pointer(event.position, viewport_dimensions)
+	elif event is InputEventMouseMotion \
+			and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_update_home_list_pointer(event.position, viewport_dimensions)
 
 
-func _home_button_rect(viewport_dimensions: Vector2) -> Rect2:
-	return Rect2(Vector2(viewport_dimensions.x * 0.5 - 160.0, 470.0), Vector2(320.0, 76.0))
+func _begin_home_list_pointer(position: Vector2, viewport_dimensions: Vector2) -> void:
+	if not _home_list_rect(viewport_dimensions).has_point(position):
+		return
+	home_list_pointer_active = true
+	home_list_pointer_start = position
+	home_list_scroll_start = home_list_scroll_offset
+	home_list_dragged = false
 
 
-func _developer_stage_button_rect(viewport_dimensions: Vector2) -> Rect2:
-	return Rect2(Vector2(viewport_dimensions.x * 0.5 - 160.0, 574.0), Vector2(320.0, 70.0))
+func _update_home_list_pointer(position: Vector2, viewport_dimensions: Vector2) -> void:
+	if not home_list_pointer_active:
+		return
+	var drag_distance := home_list_pointer_start.y - position.y
+	if absf(drag_distance) < drag_threshold_pixels and not home_list_dragged:
+		return
+	home_list_dragged = true
+	home_list_scroll_offset = _clamp_home_list_scroll(
+		home_list_scroll_start + drag_distance,
+		viewport_dimensions
+	)
+	queue_redraw()
+
+
+func _finish_home_list_pointer(position: Vector2, viewport_dimensions: Vector2) -> void:
+	var can_select := not home_list_pointer_active or not home_list_dragged
+	home_list_pointer_active = false
+	home_list_dragged = false
+	if not can_select or not _home_list_rect(viewport_dimensions).has_point(position):
+		return
+	for stage_id: String in STAGE_CATALOG.get_stage_ids():
+		if _home_stage_button_rect(stage_id, viewport_dimensions).has_point(position):
+			start_stage(stage_id)
+			return
+
+
+func _scroll_home_list(delta: float, viewport_dimensions: Vector2) -> void:
+	var next_offset := _clamp_home_list_scroll(home_list_scroll_offset + delta, viewport_dimensions)
+	if is_equal_approx(home_list_scroll_offset, next_offset):
+		return
+	home_list_scroll_offset = next_offset
+	queue_redraw()
+
+
+func _home_stage_button_rect(stage_id: String, viewport_dimensions: Vector2) -> Rect2:
+	var stage_index := STAGE_CATALOG.get_stage_ids().find(stage_id)
+	if stage_index < 0:
+		return Rect2()
+	var width := minf(560.0, viewport_dimensions.x - 48.0)
+	var list_rect := _home_list_rect(viewport_dimensions)
+	return Rect2(
+		Vector2(
+			viewport_dimensions.x * 0.5 - width * 0.5,
+			list_rect.position.y + float(stage_index) * (HOME_LIST_ITEM_HEIGHT + HOME_LIST_ITEM_GAP) - home_list_scroll_offset
+		),
+		Vector2(width, HOME_LIST_ITEM_HEIGHT)
+	)
+
+
+func _home_list_rect(viewport_dimensions: Vector2) -> Rect2:
+	var start_y := 330.0 if not home_error_message.is_empty() else 250.0
+	return Rect2(
+		Vector2(24.0, start_y),
+		Vector2(viewport_dimensions.x - 48.0, maxf(0.0, viewport_dimensions.y - start_y - HOME_LIST_BOTTOM_MARGIN))
+	)
+
+
+func _home_list_content_height(stage_count: int) -> float:
+	if stage_count <= 0:
+		return 0.0
+	return float(stage_count) * (HOME_LIST_ITEM_HEIGHT + HOME_LIST_ITEM_GAP) - HOME_LIST_ITEM_GAP
+
+
+func _home_list_scroll_max(viewport_dimensions: Vector2, stage_count: int = -1) -> float:
+	var resolved_stage_count := STAGE_CATALOG.get_stage_ids().size() if stage_count < 0 else stage_count
+	return maxf(0.0, _home_list_content_height(resolved_stage_count) - _home_list_rect(viewport_dimensions).size.y)
+
+
+func _clamp_home_list_scroll(
+	requested_offset: float,
+	viewport_dimensions: Vector2,
+	stage_count: int = -1
+) -> float:
+	return clampf(requested_offset, 0.0, _home_list_scroll_max(viewport_dimensions, stage_count))
+
+
+func _draw_home_list_scroll_indicator(list_rect: Rect2, viewport_dimensions: Vector2) -> void:
+	var content_height := _home_list_content_height(STAGE_CATALOG.get_stage_ids().size())
+	if content_height <= list_rect.size.y:
+		return
+	var track := Rect2(Vector2(viewport_dimensions.x - 34.0, list_rect.position.y + 12.0), Vector2(5.0, list_rect.size.y - 24.0))
+	var thumb_height := maxf(48.0, track.size.y * list_rect.size.y / content_height)
+	var max_scroll := _home_list_scroll_max(viewport_dimensions)
+	var thumb_y := track.position.y + (track.size.y - thumb_height) * home_list_scroll_offset / max_scroll
+	draw_rect(track, Color("435577"), true)
+	draw_rect(Rect2(Vector2(track.position.x, thumb_y), Vector2(track.size.x, thumb_height)), ARROW_COLOR, true)
+
+
+func _warm_home_stage_summaries() -> void:
+	for stage_id: String in STAGE_CATALOG.get_stage_ids():
+		get_home_stage_summary(stage_id)
+
+
+func get_home_stage_summary(stage_id: String) -> Dictionary:
+	if home_stage_summaries.has(stage_id):
+		return home_stage_summaries[stage_id].duplicate()
+	var stage_definition := STAGE_CATALOG.get_stage(stage_id)
+	if stage_definition.is_empty():
+		return {}
+	_cache_home_stage_summary(stage_definition)
+	return home_stage_summaries.get(stage_id, {}).duplicate()
+
+
+func _cache_home_stage_summary(stage_definition: Dictionary) -> void:
+	var stage_id: String = stage_definition.get("id", "")
+	if stage_id.is_empty():
+		return
+	var generation_metrics: Dictionary = stage_definition.get("generation_metrics", {})
+	var dependency_analysis: Dictionary = stage_definition.get("dependency_analysis", {})
+	if not generation_metrics.has("actual_empty_ratio") \
+			or not dependency_analysis.has("initial_extractable_ratio"):
+		return
+	home_stage_summaries[stage_id] = {
+		"actual_empty_ratio": float(generation_metrics["actual_empty_ratio"]),
+		"initial_extractable_ratio": float(dependency_analysis["initial_extractable_ratio"]),
+	}
+
+
+func _percent_label(ratio: float) -> String:
+	var percentage := ratio * 100.0
+	if is_equal_approx(percentage, roundf(percentage)):
+		return "%d%%" % roundi(percentage)
+	return "%.1f%%" % percentage
+
+
+func _generation_mode_label(generation_mode: String) -> String:
+	return "랜덤" if generation_mode == "random" else "고정"
 
 
 func _developer_home_button_rect(viewport_dimensions: Vector2) -> Rect2:
@@ -829,6 +1020,7 @@ func _on_generation_completed(_request_id: int, stage_definition: Dictionary) ->
 		return
 	flow_state = FlowState.PLAYING
 	active_stage_definition = stage_definition.duplicate(true)
+	_cache_home_stage_summary(stage_definition)
 	last_runtime_seed = int(stage_definition["runtime_seed"])
 	generation_stage_id = ""
 	_configure_board_view()

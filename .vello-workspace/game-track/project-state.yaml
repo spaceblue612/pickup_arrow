@@ -1,5 +1,5 @@
 project_id: pickup-arrow
 status: active
-current_sprint: map-generation-mode-008
-current_sprint_status: completed
-next_action: start_next_sprint
+current_sprint: stage-select-009
+current_sprint_status: delivery_complete
+next_action: delivery_complete

@@ -38,3 +38,6 @@ sprints:
     started_at: 2026-08-03
     closed_at: 2026-08-03
     closeout: sprints/map-generation-mode-008/08-sprint-closeout.yaml
+  - id: stage-select-009
+    status: delivery_complete
+    started_at: 2026-08-10

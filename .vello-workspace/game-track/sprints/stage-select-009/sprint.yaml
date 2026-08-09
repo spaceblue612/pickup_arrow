@@ -1,0 +1,9 @@
+sprint_id: stage-select-009
+track: game
+route: direct_execution
+status: delivery_complete
+started_at: 2026-08-10
+title: "스테이지 목록 선택"
+scope_authorization: confirmed
+scope:
+  - FEATURE-STAGE-SELECT-009

@@ -1,0 +1,19 @@
+sprint_id: stage-select-009
+base_sot_ref: ../../current-design/current-design.yaml
+updated_at: 2026-08-10
+updates:
+  - id: SOT-009-STAGE-SELECT
+    target: sections.gameplay.stage_selection
+    operation: add
+    content:
+      home_title: "STAGE LIST"
+      entries: "홈 화면은 넓은 스크롤 영역에 등록된 모든 스테이지를 stage_order 순서의 선택 버튼으로 표시한다. 각 버튼은 잠금 조건 없이 해당 스테이지를 즉시 시작한다."
+      scroll: "목록 콘텐츠가 영역 높이를 넘으면 터치 드래그와 마우스 휠로 세로 스크롤하며, 드래그 중에는 스테이지를 시작하지 않는다."
+      card_metrics: "각 카드는 한국어 짧은 문구로 크기, 목표 빈칸 비율, 실제 빈칸 비율과 시작 시 제거 가능 화살 비율을 표시한다. 제목에는 생성 방식 고정 또는 랜덤을 함께 표시한다."
+      generation: "fixed와 random 스테이지 모두 같은 목록에서 선택하며 random은 기존 비동기 생성 흐름을 사용한다."
+    status: verified
+    verification_mode: embedded
+    evidence: [05-implementation-handoff.md, tests/test_map_generation_controller.gd]
+    replaces: []
+    closeout_disposition: ""
+unresolved: []
