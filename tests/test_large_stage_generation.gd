@@ -65,8 +65,12 @@ func _test_large_stage(stage_id: String) -> void:
 	)
 	var shape_metrics := _shape_metrics(first["arrows"], first["grid_size"])
 	_expect(
-		shape_metrics["bent_ratio"] >= 0.05,
-		"%s keeps at least five percent bent multi-cell arrows" % stage_id
+		shape_metrics["bent_ratio"] >= 0.06,
+		"%s keeps at least six percent bent multi-cell arrows" % stage_id
+	)
+	_expect(
+		shape_metrics["strip_construction_count"] == 0,
+		"%s does not use exterior strip construction" % stage_id
 	)
 	_expect(
 		shape_metrics["head_bins"] >= 8,
@@ -96,8 +100,11 @@ func _shape_metrics(arrows: Array, grid_size: Vector2i) -> Dictionary:
 	var multi_cell_count := 0
 	var head_bins: Dictionary = {}
 	var directions: Dictionary = {}
+	var strip_construction_count := 0
 	for arrow_data: Dictionary in arrows:
 		directions[arrow_data["direction"]] = true
+		if "strip" in str(arrow_data.get("construction_role", "")):
+			strip_construction_count += 1
 		var head_cell: Vector2i = arrow_data["head_cell"]
 		var bin_x := mini(3, (head_cell.x - 1) * 4 / grid_size.x)
 		var bin_y := mini(3, (head_cell.y - 1) * 4 / grid_size.y)
@@ -116,6 +123,7 @@ func _shape_metrics(arrows: Array, grid_size: Vector2i) -> Dictionary:
 		"bent_ratio": float(bent_count) / float(maxi(multi_cell_count, 1)),
 		"head_bins": head_bins.size(),
 		"direction_count": directions.size(),
+		"strip_construction_count": strip_construction_count,
 	}
 
 

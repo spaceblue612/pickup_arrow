@@ -74,35 +74,10 @@ static func generate(
 				"Target fill is too small for the primary arrow minimum lengths"
 			)
 
-	var can_use_strip_construction := uses_fill_target \
-			and blocked_set.is_empty() \
-			and grid_size.x >= 16 \
-			and grid_size.y >= 16 \
-			and target_occupied_cells >= roundi(float(board_capacity) * 0.80) \
-			and construction_target.has("min_dependency_depth") \
-			and construction_target.has("max_dependency_depth") \
-			and construction_target.has("min_initial_extractable_ratio") \
-			and construction_target.has("max_initial_extractable_ratio")
-	if can_use_strip_construction:
-		var strip_result := _generate_strip_chain_board(
-			seed_value,
-			grid_size,
-			arrow_count,
-			min_length,
-			max_length,
-			target_empty_ratio,
-			filler_max_length,
-			board_capacity,
-			target_occupied_cells,
-			construction_target
-		)
-		if not strip_result.is_empty():
-			return strip_result
-
 	var filler_heavy := uses_fill_target \
 			and target_occupied_cells > arrow_count * max_length * 2
 	var dense_fill := uses_fill_target \
-			and target_occupied_cells >= roundi(float(board_capacity) * 0.80)
+			and target_occupied_cells >= roundi(float(board_capacity) * 0.58)
 	if dense_fill:
 		var dense_result := _generate_dense_solvable_board(
 			seed_value,
@@ -114,7 +89,8 @@ static func generate(
 			filler_max_length,
 			blocked_set,
 			board_capacity,
-			target_occupied_cells
+			target_occupied_cells,
+			construction_target
 		)
 		if not dense_result.is_empty():
 			return dense_result
@@ -150,325 +126,6 @@ static func generate(
 	return _result([], PackedStringArray(), "Could not generate a solvable board")
 
 
-static func _generate_strip_chain_board(
-	seed_value: int,
-	grid_size: Vector2i,
-	arrow_count: int,
-	min_length: int,
-	max_length: int,
-	target_empty_ratio: float,
-	filler_max_length: int,
-	board_capacity: int,
-	target_occupied_cells: int,
-	dependency_target: Dictionary
-) -> Dictionary:
-	var layout := _find_strip_layout(
-		grid_size,
-		target_occupied_cells,
-		filler_max_length,
-		int(dependency_target["min_dependency_depth"]),
-		int(dependency_target["max_dependency_depth"])
-	)
-	if layout.is_empty():
-		return {}
-
-	var chains: Array[Dictionary] = []
-	var side_width: int = layout["side_width"]
-	for y: int in range(1, grid_size.y + 1):
-		var left_cells: Array[Vector2i] = []
-		var right_cells: Array[Vector2i] = []
-		for offset: int in side_width:
-			left_cells.append(Vector2i(1 + offset, y))
-			right_cells.append(Vector2i(grid_size.x - offset, y))
-		_append_strip_chain(chains, left_cells, "LEFT")
-		_append_strip_chain(chains, right_cells, "RIGHT")
-
-	var center_width := grid_size.x - side_width * 2
-	var remaining_cells := target_occupied_cells - side_width * 2 * grid_size.y
-	var random := RandomNumberGenerator.new()
-	random.seed = seed_value
-	var extra_start := 0
-	if center_width > 0:
-		extra_start = random.randi_range(0, center_width - 1)
-	for center_index: int in center_width:
-		var column_total := remaining_cells / center_width
-		var extra_count := remaining_cells % center_width
-		var relative_index := (center_index - extra_start + center_width) % center_width
-		if relative_index < extra_count:
-			column_total += 1
-		var top_count := column_total / 2
-		var bottom_count := column_total - top_count
-		if random.randi_range(0, 1) == 1:
-			var swap_count := top_count
-			top_count = bottom_count
-			bottom_count = swap_count
-		var x := side_width + center_index + 1
-		var top_cells: Array[Vector2i] = []
-		var bottom_cells: Array[Vector2i] = []
-		for offset: int in top_count:
-			top_cells.append(Vector2i(x, 1 + offset))
-		for offset: int in bottom_count:
-			bottom_cells.append(Vector2i(x, grid_size.y - offset))
-		_append_strip_chain(chains, top_cells, "UP")
-		_append_strip_chain(chains, bottom_cells, "DOWN")
-
-	var eligible_primary_chains: Array[int] = []
-	for chain_index: int in chains.size():
-		if chain_index > 0 and chains[chain_index]["cells"].size() >= min_length:
-			eligible_primary_chains.append(chain_index)
-	if eligible_primary_chains.size() < arrow_count:
-		return {}
-	_shuffle_indices(eligible_primary_chains, random)
-	var primary_lengths: Dictionary = {}
-	for primary_index: int in arrow_count:
-		var chain_index: int = eligible_primary_chains[primary_index]
-		var chain_cell_count: int = chains[chain_index]["cells"].size()
-		primary_lengths[chain_index] = random.randi_range(
-			min_length,
-			mini(max_length, chain_cell_count)
-		)
-
-	var arrows: Array = []
-	var solution_order := PackedStringArray()
-	for chain_index: int in chains.size():
-		var chain: Dictionary = chains[chain_index]
-		var chain_cells: Array = chain["cells"]
-		var primary_length := int(primary_lengths.get(chain_index, 0))
-		var filler_cell_count := chain_cells.size() - primary_length
-		var cell_offset := 0
-		while cell_offset < filler_cell_count:
-			var filler_length := mini(filler_max_length, filler_cell_count - cell_offset)
-			_append_strip_arrow(
-				arrows,
-				solution_order,
-				chain_cells.slice(cell_offset, cell_offset + filler_length),
-				chain["direction"],
-				"filler"
-			)
-			cell_offset += filler_length
-		if primary_length > 0:
-			_append_strip_arrow(
-				arrows,
-				solution_order,
-				chain_cells.slice(cell_offset, cell_offset + primary_length),
-				chain["direction"],
-				"primary"
-			)
-
-	_bend_parallel_strip_pairs(arrows, grid_size, random)
-	_randomize_strip_body_tails(arrows, grid_size, random)
-	var reassigned_arrows := _assign_peel_wave_directions(arrows, grid_size, random)
-	if reassigned_arrows.is_empty():
-		return {}
-	arrows = reassigned_arrows
-	solution_order = find_solution_order(arrows, grid_size)
-	if arrows.is_empty() or solution_order.size() != arrows.size():
-		return {}
-	var initial_extractable_ratio := float(chains.size()) / float(arrows.size())
-	if initial_extractable_ratio < float(dependency_target["min_initial_extractable_ratio"]) \
-			or initial_extractable_ratio \
-				> float(dependency_target["max_initial_extractable_ratio"]):
-		return {}
-	return _result(
-		arrows,
-		solution_order,
-		"",
-		_build_metrics(
-			board_capacity,
-			target_occupied_cells,
-			arrow_count,
-			arrows.size() - arrow_count,
-			target_empty_ratio
-		)
-	)
-
-
-static func _randomize_strip_body_tails(
-	arrows: Array,
-	grid_size: Vector2i,
-	random: RandomNumberGenerator
-) -> void:
-	var occupied_cells := _arrows_by_cell(arrows)
-	var arrow_indices: Array[int] = []
-	for arrow_index: int in arrows.size():
-		arrow_indices.append(arrow_index)
-	_shuffle_indices(arrow_indices, random)
-	for arrow_index: int in arrow_indices:
-		var arrow_data: Dictionary = arrows[arrow_index]
-		var cells: Array = arrow_data["cells"]
-		if cells.size() < 2:
-			continue
-		var tail_index := cells.size() - 1
-		var anchor_cell: Vector2i = cells[tail_index - 1]
-		var old_tail: Vector2i = cells[tail_index]
-		var candidates: Array[Vector2i] = []
-		for step: Vector2i in STEP_VECTORS:
-			var candidate := anchor_cell + step
-			if candidate == old_tail \
-					or not _is_cell_in_bounds(candidate, grid_size) \
-					or occupied_cells.has(candidate):
-				continue
-			var head_cell: Vector2i = arrow_data["head_cell"]
-			var exit_step: Vector2i = PATH_RULE.DIRECTION_VECTORS[arrow_data["direction"]]
-			var offset := candidate - head_cell
-			var lies_on_exit_ray := (exit_step.x != 0 \
-					and offset.y == 0 and offset.x * exit_step.x > 0) \
-				or (exit_step.y != 0 \
-					and offset.x == 0 and offset.y * exit_step.y > 0)
-			if not lies_on_exit_ray:
-				candidates.append(candidate)
-		if candidates.is_empty():
-			continue
-		var new_tail: Vector2i = candidates[random.randi_range(0, candidates.size() - 1)]
-		occupied_cells.erase(old_tail)
-		occupied_cells[new_tail] = arrow_data["id"]
-		cells[tail_index] = new_tail
-		arrow_data["cells"] = cells
-		arrow_data["construction_role"] = "randomized_strip_dependency_chain"
-		arrows[arrow_index] = arrow_data
-
-
-static func _bend_parallel_strip_pairs(
-	arrows: Array,
-	grid_size: Vector2i,
-	random: RandomNumberGenerator
-) -> void:
-	var groups: Dictionary = {}
-	for arrow_index: int in arrows.size():
-		var arrow_data: Dictionary = arrows[arrow_index]
-		var cells: Array = arrow_data["cells"]
-		var direction: String = arrow_data["direction"]
-		if arrow_data["placement_role"] != "filler" \
-				or cells.size() != 3 \
-				or direction not in ["LEFT", "RIGHT"]:
-			continue
-		var y: int = cells[0].y
-		var minimum_x := grid_size.x
-		var maximum_x := 1
-		var is_horizontal := true
-		for cell: Vector2i in cells:
-			minimum_x = mini(minimum_x, cell.x)
-			maximum_x = maxi(maximum_x, cell.x)
-			if cell.y != y:
-				is_horizontal = false
-		if not is_horizontal or maximum_x - minimum_x != 2:
-			continue
-		var key := "%s:%d:%d" % [direction, minimum_x, maximum_x]
-		if not groups.has(key):
-			groups[key] = {}
-		groups[key][y] = arrow_index
-
-	for key_value: Variant in groups:
-		var rows: Dictionary = groups[key_value]
-		var y := 1
-		while y < grid_size.y:
-			if not rows.has(y) or not rows.has(y + 1):
-				y += 1
-				continue
-			if random.randf() > 0.10:
-				y += 2
-				continue
-			var top_index: int = rows[y]
-			var bottom_index: int = rows[y + 1]
-			var top_arrow: Dictionary = arrows[top_index]
-			var bottom_arrow: Dictionary = arrows[bottom_index]
-			var all_cells: Array = top_arrow["cells"] + bottom_arrow["cells"]
-			var minimum_x := grid_size.x
-			var maximum_x := 1
-			for cell: Vector2i in all_cells:
-				minimum_x = mini(minimum_x, cell.x)
-				maximum_x = maxi(maximum_x, cell.x)
-			if top_arrow["direction"] == "LEFT":
-				top_arrow["cells"] = [
-					Vector2i(minimum_x, y),
-					Vector2i(minimum_x, y + 1),
-					Vector2i(minimum_x + 1, y + 1),
-				]
-				bottom_arrow["cells"] = [
-					Vector2i(minimum_x + 1, y),
-					Vector2i(maximum_x, y),
-					Vector2i(maximum_x, y + 1),
-				]
-			else:
-				top_arrow["cells"] = [
-					Vector2i(maximum_x, y),
-					Vector2i(maximum_x, y + 1),
-					Vector2i(maximum_x - 1, y + 1),
-				]
-				bottom_arrow["cells"] = [
-					Vector2i(maximum_x - 1, y),
-					Vector2i(minimum_x, y),
-					Vector2i(minimum_x, y + 1),
-				]
-			top_arrow["head_cell"] = top_arrow["cells"][0]
-			bottom_arrow["head_cell"] = bottom_arrow["cells"][0]
-			top_arrow["construction_role"] = "bent_strip_dependency_chain"
-			bottom_arrow["construction_role"] = "bent_strip_dependency_chain"
-			arrows[top_index] = top_arrow
-			arrows[bottom_index] = bottom_arrow
-			y += 2
-
-
-static func _find_strip_layout(
-	grid_size: Vector2i,
-	target_occupied_cells: int,
-	filler_max_length: int,
-	minimum_depth: int,
-	maximum_depth: int
-) -> Dictionary:
-	for depth: int in range(minimum_depth, maximum_depth + 1):
-		var chain_cell_limit := depth * filler_max_length
-		var maximum_side_width := mini(
-			chain_cell_limit,
-			mini(grid_size.x / 2, target_occupied_cells / (grid_size.y * 2))
-		)
-		for side_width: int in range(maximum_side_width, -1, -1):
-			var side_cell_count := side_width * 2 * grid_size.y
-			var remaining_cells := target_occupied_cells - side_cell_count
-			var center_width := grid_size.x - side_width * 2
-			var column_capacity := mini(grid_size.y, chain_cell_limit * 2)
-			if remaining_cells >= 0 \
-					and remaining_cells <= center_width * column_capacity:
-				return {"depth": depth, "side_width": side_width}
-	return {}
-
-
-static func _append_strip_chain(
-	chains: Array[Dictionary],
-	cells: Array[Vector2i],
-	direction: String
-) -> void:
-	if not cells.is_empty():
-		chains.append({"cells": cells, "direction": direction})
-
-
-static func _shuffle_indices(indices: Array[int], random: RandomNumberGenerator) -> void:
-	for index: int in range(indices.size() - 1, 0, -1):
-		var swap_index := random.randi_range(0, index)
-		var temporary := indices[index]
-		indices[index] = indices[swap_index]
-		indices[swap_index] = temporary
-
-
-static func _append_strip_arrow(
-	arrows: Array,
-	solution_order: PackedStringArray,
-	cells: Array,
-	direction: String,
-	placement_role: String
-) -> void:
-	var arrow_id := _arrow_id(arrows.size())
-	arrows.append({
-		"id": arrow_id,
-		"head_cell": cells[0],
-		"direction": direction,
-		"cells": cells,
-		"placement_role": placement_role,
-		"construction_role": "strip_dependency_chain",
-	})
-	solution_order.append(arrow_id)
-
-
 static func _generate_dense_solvable_board(
 	seed_value: int,
 	grid_size: Vector2i,
@@ -479,7 +136,8 @@ static func _generate_dense_solvable_board(
 	filler_max_length: int,
 	blocked_set: Dictionary,
 	board_capacity: int,
-	target_occupied_cells: int
+	target_occupied_cells: int,
+	construction_target: Dictionary
 ) -> Dictionary:
 	for board_attempt: int in MAX_BOARD_ATTEMPTS:
 		var random := RandomNumberGenerator.new()
@@ -494,6 +152,14 @@ static func _generate_dense_solvable_board(
 			continue
 		var arrows: Array = []
 		var placement_failed := false
+		var turn_probability := 0.25
+		if target_empty_ratio < 0.20:
+			var size_factor := clampf(
+				(float(maxi(grid_size.x, grid_size.y)) - 36.0) / 24.0,
+				0.0,
+				1.0
+			)
+			turn_probability = lerpf(0.15, 0.06, size_factor)
 		for arrow_index: int in arrow_count:
 			var remaining_primary_count := arrow_count - arrow_index - 1
 			var placement_max_length: int = mini(
@@ -503,20 +169,21 @@ static func _generate_dense_solvable_board(
 			if placement_max_length < min_length:
 				placement_failed = true
 				break
-			var arrow_data := _peel_dense_arrow(
+			var primary_data := _peel_dense_arrow(
 				arrow_index,
 				grid_size,
 				min_length,
 				placement_max_length,
 				remaining_cells,
 				random,
-				"primary"
+				"primary",
+				turn_probability
 			)
-			if arrow_data.is_empty():
+			if primary_data.is_empty():
 				placement_failed = true
 				break
-			arrows.append(arrow_data)
-			for cell: Vector2i in arrow_data["cells"]:
+			arrows.append(primary_data)
+			for cell: Vector2i in primary_data["cells"]:
 				remaining_cells.erase(cell)
 		if placement_failed:
 			continue
@@ -529,7 +196,8 @@ static func _generate_dense_solvable_board(
 				mini(filler_max_length, remaining_cells.size()),
 				remaining_cells,
 				random,
-				"filler"
+				"filler",
+				turn_probability
 			)
 			if filler_data.is_empty():
 				placement_failed = true
@@ -540,7 +208,18 @@ static func _generate_dense_solvable_board(
 		if placement_failed:
 			continue
 
-		var reassigned_arrows := _assign_peel_wave_directions(arrows, grid_size, random)
+		var maximum_initial_ratio := 1.0
+		if construction_target.has("max_initial_extractable_ratio"):
+			maximum_initial_ratio = maxf(
+				0.0,
+				float(construction_target["max_initial_extractable_ratio"]) - 0.08
+			)
+		var reassigned_arrows := _assign_peel_wave_directions(
+			arrows,
+			grid_size,
+			random,
+			maximum_initial_ratio
+		)
 		if reassigned_arrows.is_empty():
 			continue
 		arrows = reassigned_arrows
@@ -568,16 +247,30 @@ static func _select_dense_occupied_cells(
 	target_occupied_cells: int,
 	random: RandomNumberGenerator
 ) -> Dictionary:
-	var playable_cells: Array[Vector2i] = []
+	var ranked_cells: Array[Dictionary] = []
 	for y: int in range(1, grid_size.y + 1):
 		for x: int in range(1, grid_size.x + 1):
 			var cell := Vector2i(x, y)
 			if not blocked_cells.has(cell):
-				playable_cells.append(cell)
-	_shuffle_cells(playable_cells, random)
+				var edge_distance := mini(
+					mini(x - 1, grid_size.x - x),
+					mini(y - 1, grid_size.y - y)
+				)
+				ranked_cells.append({
+					"cell": cell,
+					"score": edge_distance * 4 + random.randi_range(0, 3),
+				})
+	ranked_cells.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		if left["score"] != right["score"]:
+			return left["score"] < right["score"]
+		var left_cell: Vector2i = left["cell"]
+		var right_cell: Vector2i = right["cell"]
+		return left_cell.y < right_cell.y \
+				or (left_cell.y == right_cell.y and left_cell.x < right_cell.x)
+	)
 	var selected_cells: Dictionary = {}
-	for index: int in mini(target_occupied_cells, playable_cells.size()):
-		selected_cells[playable_cells[index]] = true
+	for index: int in mini(target_occupied_cells, ranked_cells.size()):
+		selected_cells[ranked_cells[index]["cell"]] = true
 	return selected_cells
 
 
@@ -588,9 +281,10 @@ static func _peel_dense_arrow(
 	max_length: int,
 	remaining_cells: Dictionary,
 	random: RandomNumberGenerator,
-	placement_role: String
+	placement_role: String,
+	turn_probability: float
 ) -> Dictionary:
-	var candidates := _dense_peel_candidates(remaining_cells, random)
+	var candidates := _dense_peel_candidates(remaining_cells, grid_size, random)
 	if candidates.is_empty():
 		return {}
 	for attempt: int in mini(MAX_ARROW_ATTEMPTS, candidates.size()):
@@ -605,7 +299,9 @@ static func _peel_dense_arrow(
 			length,
 			remaining_cells,
 			random,
-			direction
+			direction,
+			grid_size,
+			turn_probability
 		)
 		if cells.size() != length:
 			continue
@@ -632,6 +328,7 @@ static func _peel_dense_arrow(
 
 static func _dense_peel_candidates(
 	remaining_cells: Dictionary,
+	grid_size: Vector2i,
 	random: RandomNumberGenerator
 ) -> Array[Dictionary]:
 	var row_minimums: Dictionary = {}
@@ -656,18 +353,37 @@ static func _dense_peel_candidates(
 	for cell_value: Variant in remaining_cells:
 		var cell: Vector2i = cell_value
 		if cell.x == int(row_minimums[cell.y]):
-			candidates.append({"head_cell": cell, "direction": "LEFT"})
+			candidates.append({
+				"head_cell": cell,
+				"direction": "LEFT",
+				"edge_distance": cell.x - 1,
+			})
 		if cell.x == int(row_maximums[cell.y]):
-			candidates.append({"head_cell": cell, "direction": "RIGHT"})
+			candidates.append({
+				"head_cell": cell,
+				"direction": "RIGHT",
+				"edge_distance": grid_size.x - cell.x,
+			})
 		if cell.y == int(column_minimums[cell.x]):
-			candidates.append({"head_cell": cell, "direction": "UP"})
+			candidates.append({
+				"head_cell": cell,
+				"direction": "UP",
+				"edge_distance": cell.y - 1,
+			})
 		if cell.y == int(column_maximums[cell.x]):
-			candidates.append({"head_cell": cell, "direction": "DOWN"})
+			candidates.append({
+				"head_cell": cell,
+				"direction": "DOWN",
+				"edge_distance": grid_size.y - cell.y,
+			})
 	for index: int in range(candidates.size() - 1, 0, -1):
 		var swap_index := random.randi_range(0, index)
 		var temporary := candidates[index]
 		candidates[index] = candidates[swap_index]
 		candidates[swap_index] = temporary
+	candidates.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return left["edge_distance"] < right["edge_distance"]
+	)
 	return candidates
 
 
@@ -676,13 +392,17 @@ static func _build_body_from_remaining_avoiding_exit(
 	length: int,
 	remaining_cells: Dictionary,
 	random: RandomNumberGenerator,
-	direction: String
+	direction: String,
+	grid_size: Vector2i,
+	turn_probability: float
 ) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = [head_cell]
 	var body_cells := {head_cell: true}
 	var exit_step: Vector2i = PATH_RULE.DIRECTION_VECTORS[direction]
 	while cells.size() < length:
 		var candidates: Array[Vector2i] = []
+		var inward_candidates: Array[Vector2i] = []
+		var turn_candidates: Array[Vector2i] = []
 		for step: Vector2i in STEP_VECTORS:
 			var candidate: Vector2i = cells.back() + step
 			if not remaining_cells.has(candidate) or body_cells.has(candidate):
@@ -694,9 +414,35 @@ static func _build_body_from_remaining_avoiding_exit(
 					and offset.x == 0 and offset.y * exit_step.y > 0)
 			if not lies_on_exit_ray:
 				candidates.append(candidate)
+				if step == -exit_step:
+					inward_candidates.append(candidate)
+				elif step != exit_step:
+					turn_candidates.append(candidate)
 		if candidates.is_empty():
 			return []
-		var next_cell: Vector2i = candidates[random.randi_range(0, candidates.size() - 1)]
+		var preferred_candidates := candidates
+		if cells.size() == 2 and length == 3 \
+				and not turn_candidates.is_empty() \
+				and random.randf() < turn_probability:
+			var best_turn_distance := -1
+			var best_turn_candidates: Array[Vector2i] = []
+			for turn_candidate: Vector2i in turn_candidates:
+				var turn_distance := mini(
+					mini(turn_candidate.x - 1, grid_size.x - turn_candidate.x),
+					mini(turn_candidate.y - 1, grid_size.y - turn_candidate.y)
+				)
+				if turn_distance > best_turn_distance:
+					best_turn_distance = turn_distance
+					best_turn_candidates.clear()
+					best_turn_candidates.append(turn_candidate)
+				elif turn_distance == best_turn_distance:
+					best_turn_candidates.append(turn_candidate)
+			preferred_candidates = best_turn_candidates
+		elif not inward_candidates.is_empty():
+			preferred_candidates = inward_candidates
+		var next_cell: Vector2i = preferred_candidates[
+			random.randi_range(0, preferred_candidates.size() - 1)
+		]
 		cells.append(next_cell)
 		body_cells[next_cell] = true
 	return cells
@@ -852,12 +598,20 @@ static func _generate_board_attempts(
 static func _assign_peel_wave_directions(
 	arrows: Array,
 	grid_size: Vector2i,
-	random: RandomNumberGenerator
+	random: RandomNumberGenerator,
+	maximum_initial_ratio: float = 1.0
 ) -> Array:
 	var remaining: Array = arrows.duplicate(true)
 	var all_arrows_by_cell := _arrows_by_cell(arrows)
 	var assignments: Dictionary = {}
 	var assigned_depths: Dictionary = {}
+	var maximum_initial_count := arrows.size()
+	if maximum_initial_ratio < 1.0:
+		maximum_initial_count = maxi(
+			1,
+			floori(float(arrows.size()) * maximum_initial_ratio)
+		)
+	var initial_assignment_count := 0
 	var wave_index := 0
 	while not remaining.is_empty():
 		var occupied_cells := _arrows_by_cell(remaining)
@@ -892,6 +646,13 @@ static func _assign_peel_wave_directions(
 					})
 			if orientation_options.is_empty():
 				continue
+			if wave_index > 0 and initial_assignment_count >= maximum_initial_count:
+				var blocked_options: Array[Dictionary] = []
+				for option: Dictionary in orientation_options:
+					if int(option["dependency_depth"]) > 1:
+						blocked_options.append(option)
+				if not blocked_options.is_empty():
+					orientation_options = blocked_options
 			var minimum_option_depth := 2147483647
 			for option: Dictionary in orientation_options:
 				minimum_option_depth = mini(
@@ -910,10 +671,16 @@ static func _assign_peel_wave_directions(
 			wave_assignments.append(selected)
 		if wave_assignments.is_empty():
 			return []
+		if wave_index == 0 and maximum_initial_ratio < 1.0:
+			if wave_assignments.size() > maximum_initial_count:
+				_shuffle_dictionaries(wave_assignments, random)
+				wave_assignments.resize(maximum_initial_count)
 		var wave_ids: Dictionary = {}
 		for assignment: Dictionary in wave_assignments:
 			assignments[assignment["id"]] = assignment
 			assigned_depths[assignment["id"]] = assignment["dependency_depth"]
+			if int(assignment["dependency_depth"]) == 1:
+				initial_assignment_count += 1
 			wave_ids[assignment["id"]] = true
 		for arrow_index: int in range(remaining.size() - 1, -1, -1):
 			if wave_ids.has(remaining[arrow_index]["id"]):
@@ -930,6 +697,17 @@ static func _assign_peel_wave_directions(
 		reassigned["construction_wave"] = assignment["wave_index"]
 		result.append(reassigned)
 	return result
+
+
+static func _shuffle_dictionaries(
+	values: Array[Dictionary],
+	random: RandomNumberGenerator
+) -> void:
+	for index: int in range(values.size() - 1, 0, -1):
+		var swap_index := random.randi_range(0, index)
+		var temporary: Dictionary = values[index]
+		values[index] = values[swap_index]
+		values[swap_index] = temporary
 
 
 static func _assigned_direction_depth(
