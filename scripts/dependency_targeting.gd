@@ -78,7 +78,8 @@ static func select(
 			target_empty_ratio,
 			filler_max_length,
 			blocked_cells,
-			dependency_target["min_dependency_depth"]
+			dependency_target["min_dependency_depth"],
+			dependency_target
 		)
 		if not generation["error"].is_empty():
 			generation_failure_count += 1

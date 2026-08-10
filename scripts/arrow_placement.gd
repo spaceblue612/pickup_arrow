@@ -26,7 +26,8 @@ static func generate(
 	target_empty_ratio: float = NO_FILL_TARGET,
 	filler_max_length: int = 3,
 	blocked_cells: Array = [],
-	preferred_dependency_depth: int = 0
+	preferred_dependency_depth: int = 0,
+	construction_target: Dictionary = {}
 ) -> Dictionary:
 	if grid_size.x <= 0 or grid_size.y <= 0:
 		return _result([], PackedStringArray(), "Grid size must be positive")
@@ -72,6 +73,30 @@ static func generate(
 				PackedStringArray(),
 				"Target fill is too small for the primary arrow minimum lengths"
 			)
+
+	var can_use_strip_construction := uses_fill_target \
+			and blocked_set.is_empty() \
+			and grid_size.x >= 16 \
+			and grid_size.y >= 16 \
+			and construction_target.has("min_dependency_depth") \
+			and construction_target.has("max_dependency_depth") \
+			and construction_target.has("min_initial_extractable_ratio") \
+			and construction_target.has("max_initial_extractable_ratio")
+	if can_use_strip_construction:
+		var strip_result := _generate_strip_chain_board(
+			seed_value,
+			grid_size,
+			arrow_count,
+			min_length,
+			max_length,
+			target_empty_ratio,
+			filler_max_length,
+			board_capacity,
+			target_occupied_cells,
+			construction_target
+		)
+		if not strip_result.is_empty():
+			return strip_result
 
 	var filler_heavy := uses_fill_target \
 			and target_occupied_cells > arrow_count * max_length * 2
@@ -122,6 +147,192 @@ static func generate(
 			return reverse_safe_fallback
 
 	return _result([], PackedStringArray(), "Could not generate a solvable board")
+
+
+static func _generate_strip_chain_board(
+	seed_value: int,
+	grid_size: Vector2i,
+	arrow_count: int,
+	min_length: int,
+	max_length: int,
+	target_empty_ratio: float,
+	filler_max_length: int,
+	board_capacity: int,
+	target_occupied_cells: int,
+	dependency_target: Dictionary
+) -> Dictionary:
+	var layout := _find_strip_layout(
+		grid_size,
+		target_occupied_cells,
+		filler_max_length,
+		int(dependency_target["min_dependency_depth"]),
+		int(dependency_target["max_dependency_depth"])
+	)
+	if layout.is_empty():
+		return {}
+
+	var chains: Array[Dictionary] = []
+	var side_width: int = layout["side_width"]
+	for y: int in range(1, grid_size.y + 1):
+		var left_cells: Array[Vector2i] = []
+		var right_cells: Array[Vector2i] = []
+		for offset: int in side_width:
+			left_cells.append(Vector2i(1 + offset, y))
+			right_cells.append(Vector2i(grid_size.x - offset, y))
+		_append_strip_chain(chains, left_cells, "LEFT")
+		_append_strip_chain(chains, right_cells, "RIGHT")
+
+	var center_width := grid_size.x - side_width * 2
+	var remaining_cells := target_occupied_cells - side_width * 2 * grid_size.y
+	var random := RandomNumberGenerator.new()
+	random.seed = seed_value
+	var extra_start := 0
+	if center_width > 0:
+		extra_start = random.randi_range(0, center_width - 1)
+	for center_index: int in center_width:
+		var column_total := remaining_cells / center_width
+		var extra_count := remaining_cells % center_width
+		var relative_index := (center_index - extra_start + center_width) % center_width
+		if relative_index < extra_count:
+			column_total += 1
+		var top_count := column_total / 2
+		var bottom_count := column_total - top_count
+		if random.randi_range(0, 1) == 1:
+			var swap_count := top_count
+			top_count = bottom_count
+			bottom_count = swap_count
+		var x := side_width + center_index + 1
+		var top_cells: Array[Vector2i] = []
+		var bottom_cells: Array[Vector2i] = []
+		for offset: int in top_count:
+			top_cells.append(Vector2i(x, 1 + offset))
+		for offset: int in bottom_count:
+			bottom_cells.append(Vector2i(x, grid_size.y - offset))
+		_append_strip_chain(chains, top_cells, "UP")
+		_append_strip_chain(chains, bottom_cells, "DOWN")
+
+	var eligible_primary_chains: Array[int] = []
+	for chain_index: int in chains.size():
+		if chain_index > 0 and chains[chain_index]["cells"].size() >= min_length:
+			eligible_primary_chains.append(chain_index)
+	if eligible_primary_chains.size() < arrow_count:
+		return {}
+	_shuffle_indices(eligible_primary_chains, random)
+	var primary_lengths: Dictionary = {}
+	for primary_index: int in arrow_count:
+		var chain_index: int = eligible_primary_chains[primary_index]
+		var chain_cell_count: int = chains[chain_index]["cells"].size()
+		primary_lengths[chain_index] = random.randi_range(
+			min_length,
+			mini(max_length, chain_cell_count)
+		)
+
+	var arrows: Array = []
+	var solution_order := PackedStringArray()
+	for chain_index: int in chains.size():
+		var chain: Dictionary = chains[chain_index]
+		var chain_cells: Array = chain["cells"]
+		var primary_length := int(primary_lengths.get(chain_index, 0))
+		var filler_cell_count := chain_cells.size() - primary_length
+		var cell_offset := 0
+		while cell_offset < filler_cell_count:
+			var filler_length := mini(filler_max_length, filler_cell_count - cell_offset)
+			_append_strip_arrow(
+				arrows,
+				solution_order,
+				chain_cells.slice(cell_offset, cell_offset + filler_length),
+				chain["direction"],
+				"filler"
+			)
+			cell_offset += filler_length
+		if primary_length > 0:
+			_append_strip_arrow(
+				arrows,
+				solution_order,
+				chain_cells.slice(cell_offset, cell_offset + primary_length),
+				chain["direction"],
+				"primary"
+			)
+
+	if arrows.is_empty() or solution_order.size() != arrows.size():
+		return {}
+	var initial_extractable_ratio := float(chains.size()) / float(arrows.size())
+	if initial_extractable_ratio < float(dependency_target["min_initial_extractable_ratio"]) \
+			or initial_extractable_ratio \
+				> float(dependency_target["max_initial_extractable_ratio"]):
+		return {}
+	return _result(
+		arrows,
+		solution_order,
+		"",
+		_build_metrics(
+			board_capacity,
+			target_occupied_cells,
+			arrow_count,
+			arrows.size() - arrow_count,
+			target_empty_ratio
+		)
+	)
+
+
+static func _find_strip_layout(
+	grid_size: Vector2i,
+	target_occupied_cells: int,
+	filler_max_length: int,
+	minimum_depth: int,
+	maximum_depth: int
+) -> Dictionary:
+	for depth: int in range(minimum_depth, maximum_depth + 1):
+		var chain_cell_limit := depth * filler_max_length
+		var maximum_side_width := mini(
+			chain_cell_limit,
+			mini(grid_size.x / 2, target_occupied_cells / (grid_size.y * 2))
+		)
+		for side_width: int in range(maximum_side_width, -1, -1):
+			var side_cell_count := side_width * 2 * grid_size.y
+			var remaining_cells := target_occupied_cells - side_cell_count
+			var center_width := grid_size.x - side_width * 2
+			var column_capacity := mini(grid_size.y, chain_cell_limit * 2)
+			if remaining_cells >= 0 \
+					and remaining_cells <= center_width * column_capacity:
+				return {"depth": depth, "side_width": side_width}
+	return {}
+
+
+static func _append_strip_chain(
+	chains: Array[Dictionary],
+	cells: Array[Vector2i],
+	direction: String
+) -> void:
+	if not cells.is_empty():
+		chains.append({"cells": cells, "direction": direction})
+
+
+static func _shuffle_indices(indices: Array[int], random: RandomNumberGenerator) -> void:
+	for index: int in range(indices.size() - 1, 0, -1):
+		var swap_index := random.randi_range(0, index)
+		var temporary := indices[index]
+		indices[index] = indices[swap_index]
+		indices[swap_index] = temporary
+
+
+static func _append_strip_arrow(
+	arrows: Array,
+	solution_order: PackedStringArray,
+	cells: Array,
+	direction: String,
+	placement_role: String
+) -> void:
+	var arrow_id := _arrow_id(arrows.size())
+	arrows.append({
+		"id": arrow_id,
+		"head_cell": cells[0],
+		"direction": direction,
+		"cells": cells,
+		"placement_role": placement_role,
+		"construction_role": "strip_dependency_chain",
+	})
+	solution_order.append(arrow_id)
 
 
 static func _generate_dense_solvable_board(

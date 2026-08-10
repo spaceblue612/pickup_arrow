@@ -12,18 +12,20 @@ static func analyze(arrows: Array, grid_size: Vector2i) -> Dictionary:
 		return result
 
 	var arrow_ids := PackedStringArray()
+	var arrows_by_id: Dictionary = {}
 	var blockers_by_arrow: Dictionary = {}
 	var dependents_by_arrow: Dictionary = {}
 	for arrow_data: Dictionary in arrows:
 		var arrow_id: String = arrow_data["id"]
 		arrow_ids.append(arrow_id)
+		arrows_by_id[arrow_id] = arrow_data
 		blockers_by_arrow[arrow_id] = PackedStringArray()
 		dependents_by_arrow[arrow_id] = PackedStringArray()
 
 	var edge_count := 0
 	var arrows_by_cell := _arrows_by_cell(arrows)
 	for arrow_id: String in arrow_ids:
-		var selected_arrow := _find_arrow(arrow_id, arrows)
+		var selected_arrow: Dictionary = arrows_by_id[arrow_id]
 		for blocker_id: String in _blocking_arrow_ids(selected_arrow, arrows_by_cell, grid_size):
 			if not dependents_by_arrow.has(blocker_id):
 				result["error"] = "Path rule returned an unknown blocker: %s" % blocker_id
@@ -41,7 +43,11 @@ static func analyze(arrows: Array, grid_size: Vector2i) -> Dictionary:
 		blockers_by_arrow,
 		dependents_by_arrow
 	)
-	var simulation: Dictionary = _simulate_solution(arrows, grid_size)
+	var simulation: Dictionary = _simulate_dependency_graph(
+		arrow_ids,
+		blockers_by_arrow,
+		dependents_by_arrow
+	)
 	var choice_counts: PackedInt32Array = simulation["choice_counts"]
 	var initial_extractable_count := 0
 	if not choice_counts.is_empty():
@@ -101,36 +107,48 @@ static func _analyze_topology(
 	}
 
 
-static func _simulate_solution(arrows: Array, grid_size: Vector2i) -> Dictionary:
-	var remaining: Array = arrows.duplicate(true)
-	var arrows_by_cell := _arrows_by_cell(remaining)
+static func _simulate_dependency_graph(
+	arrow_ids: PackedStringArray,
+	blockers_by_arrow: Dictionary,
+	dependents_by_arrow: Dictionary
+) -> Dictionary:
+	var in_degrees: Dictionary = {}
+	var processed: Dictionary = {}
+	var ready_count := 0
+	for arrow_id: String in arrow_ids:
+		var blocker_count: int = blockers_by_arrow[arrow_id].size()
+		in_degrees[arrow_id] = blocker_count
+		if blocker_count == 0:
+			ready_count += 1
+
 	var solution_order := PackedStringArray()
 	var choice_counts := PackedInt32Array()
 	var forced_state_count := 0
 	var total_choice_count := 0
 
-	while not remaining.is_empty():
-		var extractable_ids := PackedStringArray()
-		for arrow_data: Dictionary in remaining:
-			var arrow_id: String = arrow_data["id"]
-			if _blocking_arrow_ids(arrow_data, arrows_by_cell, grid_size).is_empty():
-				extractable_ids.append(arrow_id)
-		if extractable_ids.is_empty():
+	while solution_order.size() < arrow_ids.size():
+		if ready_count == 0:
 			break
 
-		choice_counts.append(extractable_ids.size())
-		total_choice_count += extractable_ids.size()
-		if extractable_ids.size() == 1:
+		choice_counts.append(ready_count)
+		total_choice_count += ready_count
+		if ready_count == 1:
 			forced_state_count += 1
 
-		var selected_id: String = extractable_ids[0]
-		solution_order.append(selected_id)
-		for arrow_index: int in remaining.size():
-			if remaining[arrow_index]["id"] == selected_id:
-				for cell: Vector2i in remaining[arrow_index]["cells"]:
-					arrows_by_cell.erase(cell)
-				remaining.remove_at(arrow_index)
+		var selected_id := ""
+		for arrow_id: String in arrow_ids:
+			if not processed.has(arrow_id) and int(in_degrees[arrow_id]) == 0:
+				selected_id = arrow_id
 				break
+		if selected_id.is_empty():
+			break
+		processed[selected_id] = true
+		ready_count -= 1
+		solution_order.append(selected_id)
+		for dependent_id: String in dependents_by_arrow[selected_id]:
+			in_degrees[dependent_id] = int(in_degrees[dependent_id]) - 1
+			if int(in_degrees[dependent_id]) == 0:
+				ready_count += 1
 
 	var measured_state_count := choice_counts.size()
 	return {
@@ -146,7 +164,7 @@ static func _simulate_solution(arrows: Array, grid_size: Vector2i) -> Dictionary
 			if measured_state_count > 0
 			else 0.0
 		),
-		"has_complete_solution": remaining.is_empty(),
+		"has_complete_solution": solution_order.size() == arrow_ids.size(),
 		"solution_order": solution_order,
 	}
 
@@ -159,27 +177,22 @@ static func _arrows_by_cell(arrows: Array) -> Dictionary:
 	return arrows_by_cell
 
 
-static func _find_arrow(arrow_id: String, arrows: Array) -> Dictionary:
-	for arrow_data: Dictionary in arrows:
-		if arrow_data["id"] == arrow_id:
-			return arrow_data
-	return {}
-
-
 static func _blocking_arrow_ids(
 	arrow_data: Dictionary,
 	arrows_by_cell: Dictionary,
 	grid_size: Vector2i
 ) -> PackedStringArray:
 	var blocking_ids := PackedStringArray()
+	var seen_blockers: Dictionary = {}
 	var direction: Vector2i = PATH_RULE.DIRECTION_VECTORS[arrow_data["direction"]]
 	var path_cell: Vector2i = arrow_data["head_cell"] + direction
 	while path_cell.x >= 1 and path_cell.x <= grid_size.x \
 			and path_cell.y >= 1 and path_cell.y <= grid_size.y:
 		if arrows_by_cell.has(path_cell):
 			var blocker_id: String = arrows_by_cell[path_cell]
-			if not blocking_ids.has(blocker_id):
+			if not seen_blockers.has(blocker_id):
 				blocking_ids.append(blocker_id)
+				seen_blockers[blocker_id] = true
 		path_cell += direction
 	return blocking_ids
 
