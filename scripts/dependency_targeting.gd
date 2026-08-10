@@ -25,7 +25,8 @@ static func select(
 	filler_max_length: int,
 	dependency_target: Dictionary,
 	max_candidate_attempts: int,
-	blocked_cells: Array = []
+	blocked_cells: Array = [],
+	progress: Variant = null
 ) -> Dictionary:
 	var target_error := _validate_dependency_target(dependency_target)
 	if not target_error.is_empty():
@@ -65,6 +66,8 @@ static func select(
 	var generation_failure_count := 0
 	var analysis_failure_count := 0
 	for candidate_index: int in max_candidate_attempts:
+		if progress != null:
+			progress.begin_candidate(candidate_index + 1)
 		var candidate_seed := base_seed + candidate_index * CANDIDATE_SEED_STEP
 		var generation: Dictionary = ARROW_PLACEMENT.generate(
 			candidate_seed,

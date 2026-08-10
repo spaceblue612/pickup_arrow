@@ -6,6 +6,7 @@ const PATH_RULE := preload("res://scripts/path_rule.gd")
 const BOARD_STATE := preload("res://scripts/board_state.gd")
 const BOARD_VIEWPORT := preload("res://scripts/board_viewport.gd")
 const MAP_GENERATION_CONTROLLER := preload("res://scripts/map_generation_controller.gd")
+const HOME_STAGE_SUMMARY_LOADER := preload("res://scripts/home_stage_summary_loader.gd")
 
 const BACKGROUND_COLOR := Color("182033")
 const BOARD_COLOR := Color("263451")
@@ -47,12 +48,17 @@ var retry_stage_id := ""
 var home_error_message := ""
 var generation_wait_ratio := 0.0
 var generation_elapsed_seconds := 0.0
+var generation_candidate_progress: Dictionary = {}
 var generation_stage_id := ""
 var last_runtime_seed := -1
 var generation_controller: Node
 var active_stage_definition: Dictionary = {}
 var _active_touches: Dictionary = {}
 var home_stage_summaries: Dictionary = {}
+var home_stage_definitions: Dictionary = {}
+var home_summary_loader: Node
+var home_summary_completed_count := 0
+var home_summary_total_count := 0
 var home_list_scroll_offset := 0.0
 var home_list_pointer_active := false
 var home_list_pointer_start := Vector2.ZERO
@@ -65,8 +71,9 @@ func _ready() -> void:
 	if STAGE_CATALOG.get_stage_ids().is_empty():
 		show_home("Balance snapshot failed to load")
 	else:
-		_warm_home_stage_summaries()
 		show_home()
+		_ensure_home_summary_loader()
+		call_deferred("_start_home_stage_summary_loading")
 
 
 func initialize_game() -> Dictionary:
@@ -86,6 +93,7 @@ func show_home(error_message: String = "", failed_stage_id: String = "") -> void
 	generation_stage_id = ""
 	generation_wait_ratio = 0.0
 	generation_elapsed_seconds = 0.0
+	generation_candidate_progress.clear()
 	home_list_scroll_offset = 0.0
 	home_list_pointer_active = false
 	home_list_dragged = false
@@ -121,18 +129,16 @@ func request_stage(
 	if profile.is_empty():
 		show_home("Map generation problem. Please try again.", stage_id)
 		return {"event": "load_failed"}
-	if profile["generation_mode"] == "fixed" and runtime_seed_override < 0:
-		var fixed_result := load_stage(stage_id)
-		if fixed_result["event"] != "stage_loaded":
-			show_home("Stage settings could not generate a playable map.", stage_id)
-			stage_load_failed.emit(stage_id, "generation_failed")
-		return fixed_result
+	if profile["generation_mode"] == "fixed" and runtime_seed_override < 0 \
+			and home_stage_definitions.has(stage_id):
+		return _load_stage_definition(home_stage_definitions[stage_id])
 
 	_ensure_generation_controller()
 	flow_state = FlowState.GENERATING
 	generation_stage_id = stage_id
 	generation_wait_ratio = 0.0
 	generation_elapsed_seconds = 0.0
+	generation_candidate_progress.clear()
 	status_message = "Generating map..."
 	var request: Dictionary = generation_controller.request_stage(
 		stage_id,
@@ -151,12 +157,21 @@ func load_stage(stage_id: String) -> Dictionary:
 	var stage_definition := STAGE_CATALOG.get_stage(stage_id)
 	if stage_definition.is_empty():
 		return {"event": "load_failed"}
+	return _load_stage_definition(stage_definition)
+
+
+func _load_stage_definition(stage_definition: Dictionary) -> Dictionary:
+	var stage_id: String = stage_definition.get("id", "")
+	if stage_id.is_empty():
+		return {"event": "load_failed"}
 	var result: Dictionary = board_state.load_stage_definition(stage_definition)
 	if result["event"] == "stage_loaded":
 		active_stage_definition = stage_definition.duplicate(true)
+		if stage_definition.get("generation_mode") == "fixed":
+			home_stage_definitions[stage_id] = stage_definition.duplicate(true)
 		_cache_home_stage_summary(stage_definition)
 		flow_state = FlowState.PLAYING
-		last_runtime_seed = int(STAGE_CATALOG.get_stage_profile(stage_id)["seed"])
+		last_runtime_seed = int(stage_definition.get("runtime_seed", STAGE_CATALOG.get_stage_profile(stage_id)["seed"]))
 		_configure_board_view()
 		stage_load_completed.emit(stage_id, last_runtime_seed)
 	queue_redraw()
@@ -253,6 +268,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_handle_home_input(event)
 		return
 	if flow_state == FlowState.GENERATING:
+		if _is_pointer_release_in_rect(event, _generation_cancel_button_rect(_viewport_size())):
+			cancel_stage_generation()
 		return
 	if not read_only_preview \
 			and developer_checks_enabled and _is_pointer_release_in_rect(
@@ -366,6 +383,7 @@ func _draw_home(viewport_dimensions: Vector2) -> void:
 	var center_x := viewport_dimensions.x * 0.5
 	draw_string(font, Vector2(center_x - 200.0, 150.0), "STAGE LIST", HORIZONTAL_ALIGNMENT_CENTER, 400.0, 38, TEXT_COLOR)
 	draw_string(font, Vector2(center_x - 220.0, 194.0), "Choose a stage to play", HORIZONTAL_ALIGNMENT_CENTER, 440.0, 21, Color("a9b8d6"))
+	_draw_home_summary_progress(viewport_dimensions)
 	if not home_error_message.is_empty():
 		draw_multiline_string(
 			font,
@@ -434,14 +452,62 @@ func _draw_home(viewport_dimensions: Vector2) -> void:
 	_draw_home_list_scroll_indicator(list_rect, viewport_dimensions)
 
 
+func _draw_home_summary_progress(viewport_dimensions: Vector2) -> void:
+	if not _is_home_summary_loading():
+		return
+	var font := ThemeDB.fallback_font
+	var center_x := viewport_dimensions.x * 0.5
+	var label := "스테이지 정보 불러오는 중 %d / %d" % [
+		home_summary_completed_count,
+		home_summary_total_count,
+	]
+	draw_string(
+		font,
+		Vector2(center_x - 230.0, 226.0),
+		label,
+		HORIZONTAL_ALIGNMENT_CENTER,
+		460.0,
+		17,
+		Color("a9b8d6")
+	)
+	var track := Rect2(Vector2(center_x - 230.0, 238.0), Vector2(460.0, 10.0))
+	var ratio := float(home_summary_completed_count) / float(maxi(home_summary_total_count, 1))
+	draw_rect(track, BOARD_COLOR, true)
+	draw_rect(Rect2(track.position, Vector2(track.size.x * ratio, track.size.y)), ARROW_COLOR, true)
+
+
 func _draw_generation_wait(viewport_dimensions: Vector2) -> void:
 	var font := ThemeDB.fallback_font
 	var center_x := viewport_dimensions.x * 0.5
 	draw_string(font, Vector2(center_x - 220.0, 260.0), "GENERATING %s" % generation_stage_id, HORIZONTAL_ALIGNMENT_CENTER, 440.0, 28, TEXT_COLOR)
+	var candidate_index := int(generation_candidate_progress.get("active_candidate", 0))
+	var candidate_total := int(generation_candidate_progress.get("candidate_total", 0))
+	var candidate_ratio := float(candidate_index) / float(maxi(candidate_total, 1))
 	var track := Rect2(Vector2(center_x - 230.0, 330.0), Vector2(460.0, 30.0))
 	draw_rect(track, BOARD_COLOR, true)
-	draw_rect(Rect2(track.position, Vector2(track.size.x * generation_wait_ratio, track.size.y)), ARROW_COLOR, true)
-	draw_string(font, Vector2(center_x - 220.0, 410.0), "%.1f / 10.0 sec" % generation_elapsed_seconds, HORIZONTAL_ALIGNMENT_CENTER, 440.0, 22, TEXT_COLOR)
+	draw_rect(Rect2(track.position, Vector2(track.size.x * candidate_ratio, track.size.y)), ARROW_COLOR, true)
+	draw_string(
+		font,
+		Vector2(center_x - 220.0, 400.0),
+		"생성 후보 %d / %d" % [candidate_index, candidate_total],
+		HORIZONTAL_ALIGNMENT_CENTER,
+		440.0,
+		22,
+		TEXT_COLOR
+	)
+	draw_string(font, Vector2(center_x - 220.0, 430.0), "경과 %.1f sec" % generation_elapsed_seconds, HORIZONTAL_ALIGNMENT_CENTER, 440.0, 20, Color("a9b8d6"))
+	var cancel_button := _generation_cancel_button_rect(viewport_dimensions)
+	draw_rect(cancel_button, Color("5a3443"), true)
+	draw_rect(cancel_button, BLOCKED_COLOR, false, 2.0)
+	draw_string(
+		font,
+		cancel_button.position + Vector2(0.0, 35.0),
+		"CANCEL",
+		HORIZONTAL_ALIGNMENT_CENTER,
+		cancel_button.size.x,
+		19,
+		TEXT_COLOR
+	)
 
 
 func _handle_home_input(event: InputEvent) -> void:
@@ -529,10 +595,16 @@ func _home_stage_button_rect(stage_id: String, viewport_dimensions: Vector2) -> 
 
 func _home_list_rect(viewport_dimensions: Vector2) -> Rect2:
 	var start_y := 330.0 if not home_error_message.is_empty() else 250.0
+	if home_error_message.is_empty() and _is_home_summary_loading():
+		start_y = 290.0
 	return Rect2(
 		Vector2(24.0, start_y),
 		Vector2(viewport_dimensions.x - 48.0, maxf(0.0, viewport_dimensions.y - start_y - HOME_LIST_BOTTOM_MARGIN))
 	)
+
+
+func _is_home_summary_loading() -> bool:
+	return is_instance_valid(home_summary_loader) and home_summary_loader.is_loading()
 
 
 func _home_list_content_height(stage_count: int) -> float:
@@ -566,19 +638,10 @@ func _draw_home_list_scroll_indicator(list_rect: Rect2, viewport_dimensions: Vec
 	draw_rect(Rect2(Vector2(track.position.x, thumb_y), Vector2(track.size.x, thumb_height)), ARROW_COLOR, true)
 
 
-func _warm_home_stage_summaries() -> void:
-	for stage_id: String in STAGE_CATALOG.get_stage_ids():
-		get_home_stage_summary(stage_id)
-
-
 func get_home_stage_summary(stage_id: String) -> Dictionary:
 	if home_stage_summaries.has(stage_id):
 		return home_stage_summaries[stage_id].duplicate()
-	var stage_definition := STAGE_CATALOG.get_stage(stage_id)
-	if stage_definition.is_empty():
-		return {}
-	_cache_home_stage_summary(stage_definition)
-	return home_stage_summaries.get(stage_id, {}).duplicate()
+	return {}
 
 
 func _cache_home_stage_summary(stage_definition: Dictionary) -> void:
@@ -609,6 +672,10 @@ func _generation_mode_label(generation_mode: String) -> String:
 
 func _developer_home_button_rect(viewport_dimensions: Vector2) -> Rect2:
 	return Rect2(Vector2(viewport_dimensions.x - 190.0, 38.0), Vector2(150.0, 54.0))
+
+
+func _generation_cancel_button_rect(viewport_dimensions: Vector2) -> Rect2:
+	return Rect2(Vector2(viewport_dimensions.x * 0.5 - 120.0, 450.0), Vector2(240.0, 54.0))
 
 
 func _is_pointer_release_in_rect(event: InputEvent, rect: Rect2) -> bool:
@@ -1000,8 +1067,42 @@ func _ensure_generation_controller() -> void:
 	generation_controller = MAP_GENERATION_CONTROLLER.new()
 	add_child(generation_controller)
 	generation_controller.progress_changed.connect(_on_generation_progress)
+	generation_controller.candidate_progress_changed.connect(_on_generation_candidate_progress)
 	generation_controller.generation_completed.connect(_on_generation_completed)
 	generation_controller.generation_failed.connect(_on_generation_failed)
+
+
+func _ensure_home_summary_loader() -> void:
+	if is_instance_valid(home_summary_loader):
+		return
+	home_summary_loader = HOME_STAGE_SUMMARY_LOADER.new()
+	add_child(home_summary_loader)
+	home_summary_loader.progress_changed.connect(_on_home_summary_progress)
+	home_summary_loader.summary_ready.connect(_on_home_summary_ready)
+	home_summary_loader.loading_finished.connect(_on_home_summary_finished)
+
+
+func _start_home_stage_summary_loading() -> void:
+	if not is_instance_valid(home_summary_loader):
+		return
+	home_summary_loader.start(STAGE_CATALOG.get_stage_ids())
+
+
+func _on_home_summary_progress(completed_count: int, total_count: int) -> void:
+	home_summary_completed_count = completed_count
+	home_summary_total_count = total_count
+	queue_redraw()
+
+
+func _on_home_summary_ready(_stage_id: String, stage_definition: Dictionary) -> void:
+	if stage_definition.get("generation_mode") == "fixed":
+		home_stage_definitions[stage_definition["id"]] = stage_definition.duplicate(true)
+	_cache_home_stage_summary(stage_definition)
+	queue_redraw()
+
+
+func _on_home_summary_finished() -> void:
+	queue_redraw()
 
 
 func _on_generation_progress(request_id: int, wait_ratio: float, elapsed_seconds: float) -> void:
@@ -1013,19 +1114,32 @@ func _on_generation_progress(request_id: int, wait_ratio: float, elapsed_seconds
 	queue_redraw()
 
 
+func _on_generation_candidate_progress(request_id: int, progress: Dictionary) -> void:
+	if not is_instance_valid(generation_controller) \
+			or request_id != generation_controller.active_request_id:
+		return
+	generation_candidate_progress = progress.duplicate()
+	queue_redraw()
+
+
+func cancel_stage_generation() -> Dictionary:
+	if flow_state != FlowState.GENERATING or not is_instance_valid(generation_controller):
+		return {"cancelled": false}
+	var result: Dictionary = generation_controller.cancel_active_request()
+	if not result["cancelled"]:
+		return result
+	status_message = ""
+	show_home()
+	return result
+
+
 func _on_generation_completed(_request_id: int, stage_definition: Dictionary) -> void:
-	var result := board_state.load_stage_definition(stage_definition)
+	var result := _load_stage_definition(stage_definition)
 	if result["event"] != "stage_loaded":
 		_on_generation_failed(0, stage_definition.get("id", generation_stage_id), "invalid_result")
 		return
-	flow_state = FlowState.PLAYING
-	active_stage_definition = stage_definition.duplicate(true)
-	_cache_home_stage_summary(stage_definition)
-	last_runtime_seed = int(stage_definition["runtime_seed"])
 	generation_stage_id = ""
-	_configure_board_view()
 	status_message = "Tap an arrow to pull it out"
-	stage_load_completed.emit(board_state.active_stage_id, last_runtime_seed)
 	queue_redraw()
 
 

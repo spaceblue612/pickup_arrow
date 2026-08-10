@@ -93,7 +93,8 @@ static func get_stage(stage_id: String) -> Dictionary:
 static func build_stage_from_profile(
 	config: Dictionary,
 	generation_seed: int,
-	snapshot_metadata: Dictionary = {}
+	snapshot_metadata: Dictionary = {},
+	progress: Variant = null
 ) -> Dictionary:
 	var stage_id: String = config.get("stage_id", "")
 	if stage_id.is_empty():
@@ -118,7 +119,8 @@ static func build_stage_from_profile(
 		config["filler_max_length"],
 		config["dependency_target"],
 		config["max_candidate_attempts"],
-		blocked_cells
+		blocked_cells,
+		progress
 	)
 	if not generation["error"].is_empty():
 		push_error("Stage generation failed for %s: %s" % [stage_id, generation["error"]])

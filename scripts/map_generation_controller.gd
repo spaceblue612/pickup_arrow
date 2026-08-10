@@ -2,7 +2,8 @@ class_name MapGenerationController
 extends Node
 
 const STAGE_CATALOG := preload("res://scripts/stage_catalog.gd")
-const DEFAULT_TIMEOUT_SECONDS := 10.0
+const GENERATION_PROGRESS := preload("res://scripts/generation_progress.gd")
+const DEFAULT_TIMEOUT_SECONDS := 0.0
 const MAX_RUNTIME_SEED := 2147483647
 
 enum State {
@@ -14,6 +15,7 @@ enum State {
 }
 
 signal progress_changed(request_id: int, wait_ratio: float, elapsed_seconds: float)
+signal candidate_progress_changed(request_id: int, progress: Dictionary)
 signal generation_completed(request_id: int, stage_definition: Dictionary)
 signal generation_failed(request_id: int, stage_id: String, code: String)
 
@@ -24,6 +26,7 @@ var active_runtime_seed := -1
 var _request_serial := 0
 var _active_started_msec := 0
 var _active_timeout_seconds := DEFAULT_TIMEOUT_SECONDS
+var _active_progress: RefCounted
 var _jobs: Array[Dictionary] = []
 var _last_random_seed_by_stage: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
@@ -54,13 +57,16 @@ func request_stage(
 	active_runtime_seed = runtime_seed
 	_active_started_msec = Time.get_ticks_msec()
 	_active_timeout_seconds = maxf(timeout_seconds, 0.0)
+	_active_progress = GENERATION_PROGRESS.new()
+	_active_progress.begin(int(profile["max_candidate_attempts"]))
 	state = State.GENERATING
 
 	var thread := Thread.new()
 	var start_error := thread.start(_build_stage.bind(
 		profile.duplicate(true),
 		runtime_seed,
-		STAGE_CATALOG.get_snapshot_metadata()
+		STAGE_CATALOG.get_snapshot_metadata(),
+		_active_progress
 	))
 	if start_error != OK:
 		state = State.FAILED
@@ -86,16 +92,32 @@ func active_request() -> Dictionary:
 	}
 
 
+func cancel_active_request() -> Dictionary:
+	if active_request_id == 0:
+		return {"cancelled": false}
+	var result := {
+		"cancelled": true,
+		"request_id": active_request_id,
+		"stage_id": active_stage_id,
+		"runtime_seed": active_runtime_seed,
+	}
+	active_request_id = 0
+	active_stage_id = ""
+	active_runtime_seed = -1
+	_active_progress = null
+	state = State.IDLE
+	return result
+
+
 func _process(_delta: float) -> void:
 	if active_request_id != 0:
 		var elapsed := float(Time.get_ticks_msec() - _active_started_msec) / 1000.0
-		var ratio := 1.0 if _active_timeout_seconds <= 0.0 else clampf(
-			elapsed / _active_timeout_seconds,
-			0.0,
-			1.0
-		)
+		var ratio := 0.5 + sin(elapsed * 3.0) * 0.35 if _active_timeout_seconds <= 0.0 \
+			else clampf(elapsed / _active_timeout_seconds, 0.0, 1.0)
 		progress_changed.emit(active_request_id, ratio, elapsed)
-		if elapsed >= _active_timeout_seconds:
+		if _active_progress != null:
+			candidate_progress_changed.emit(active_request_id, _active_progress.snapshot())
+		if _active_timeout_seconds > 0.0 and elapsed >= _active_timeout_seconds:
 			var expired_request_id := active_request_id
 			var expired_stage_id := active_stage_id
 			state = State.TIMED_OUT
@@ -113,6 +135,7 @@ func _process(_delta: float) -> void:
 			continue
 		var completed_request_id := active_request_id
 		active_request_id = 0
+		_active_progress = null
 		if not (stage_definition is Dictionary) or stage_definition.is_empty():
 			state = State.FAILED
 			generation_failed.emit(completed_request_id, job["stage_id"], "generation_failed")
@@ -132,8 +155,13 @@ func _exit_tree() -> void:
 	_jobs.clear()
 
 
-func _build_stage(profile: Dictionary, runtime_seed: int, metadata: Dictionary) -> Dictionary:
-	return STAGE_CATALOG.build_stage_from_profile(profile, runtime_seed, metadata)
+func _build_stage(
+	profile: Dictionary,
+	runtime_seed: int,
+	metadata: Dictionary,
+	progress: RefCounted
+) -> Dictionary:
+	return STAGE_CATALOG.build_stage_from_profile(profile, runtime_seed, metadata, progress)
 
 
 func _next_random_seed(stage_id: String) -> int:

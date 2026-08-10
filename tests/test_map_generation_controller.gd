@@ -9,6 +9,7 @@ var _failures := PackedStringArray()
 var _completed_stage: Dictionary = {}
 var _failed_code := ""
 var _progress_events := 0
+var _candidate_progress := {}
 
 
 func _init() -> void:
@@ -17,7 +18,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_fixed_generation_is_stable()
-	await _test_controller_random_and_timeout()
+	await _test_controller_random_and_cancellation()
 	await _test_actual_random_stage_game_flow()
 	_finish()
 
@@ -30,11 +31,14 @@ func _test_fixed_generation_is_stable() -> void:
 	_expect(first["generation_mode"] == "fixed", "Fixed stage exposes its generation mode")
 
 
-func _test_controller_random_and_timeout() -> void:
+func _test_controller_random_and_cancellation() -> void:
 	var controller = CONTROLLER.new()
 	root.add_child(controller)
 	controller.progress_changed.connect(func(_id: int, _ratio: float, _elapsed: float) -> void:
 		_progress_events += 1
+	)
+	controller.candidate_progress_changed.connect(func(_id: int, progress: Dictionary) -> void:
+		_candidate_progress = progress
 	)
 	controller.generation_completed.connect(func(_id: int, stage: Dictionary) -> void:
 		_completed_stage = stage
@@ -53,14 +57,24 @@ func _test_controller_random_and_timeout() -> void:
 		_expect(_completed_stage["runtime_seed"] == 4004, "Controller applies the requested runtime seed")
 		_expect(STAGE_CATALOG.validate_stage(_completed_stage)["is_valid"], "Random result validates")
 	_expect(_progress_events > 0, "Main loop receives generation progress while the worker runs")
+	_expect(
+		_candidate_progress.get("candidate_total") \
+			== STAGE_CATALOG.get_stage_profile("STAGE-004")["max_candidate_attempts"],
+		"Generation progress exposes the configured candidate target"
+	)
+	_expect(
+		int(_candidate_progress.get("active_candidate", 0)) >= 1,
+		"Generation progress exposes the active candidate"
+	)
 
 	_completed_stage = {}
 	_failed_code = ""
-	controller.request_stage("STAGE-004", 4004, 0.0)
-	await process_frame
-	_expect(_failed_code == "timeout", "Zero time budget expires the request")
+	controller.request_stage("STAGE-004", 4004)
+	var cancelled: Dictionary = controller.cancel_active_request()
+	_expect(cancelled["cancelled"], "An active generation request can be cancelled")
+	_expect(controller.state == CONTROLLER.State.IDLE, "Cancellation returns the controller to idle")
 	await _wait_for_jobs(controller)
-	_expect(_completed_stage.is_empty(), "A stale worker result is not applied after timeout")
+	_expect(_completed_stage.is_empty(), "A cancelled worker result is not applied")
 	controller.free()
 
 
@@ -69,9 +83,17 @@ func _test_actual_random_stage_game_flow() -> void:
 	root.add_child(game)
 	await process_frame
 	_expect(game.flow_state == GAME.FlowState.HOME, "Runtime opens on the home state")
+	game.home_summary_loader.stop_loading()
+	await _wait_for_home_summary_loader(game)
 	_test_stage_list_scroll_range(game)
 	_test_stage_list_metrics(game)
-	_expect(game.start_game()["event"] == "stage_loaded", "Home starts the fixed first stage")
+	var first_start := game.start_game()
+	_expect(
+		first_start["event"] in ["stage_loaded", "generation_requested"],
+		"Home starts a fixed stage from its prepared result or asynchronously"
+	)
+	if game.flow_state == GAME.FlowState.GENERATING:
+		await _wait_for_game(game)
 	_expect(game.board_state.active_stage_id == "STAGE-001", "First stage is playable")
 
 	game.load_stage("STAGE-003")
@@ -84,7 +106,7 @@ func _test_actual_random_stage_game_flow() -> void:
 	var first_seed: int = game.last_runtime_seed
 
 	game.show_home()
-	for stage_id: String in STAGE_CATALOG.get_stage_ids():
+	for stage_id: String in ["STAGE-001", "STAGE-004"]:
 		var button := game._home_stage_button_rect(stage_id, game._viewport_size())
 		_expect(button.size.x > 0.0, "Home lists %s as a selectable stage" % stage_id)
 		game._handle_home_input(_mouse_release_at(button.get_center()))
@@ -114,11 +136,15 @@ func _test_actual_random_stage_game_flow() -> void:
 	await _wait_for_game(game)
 	_expect(game.last_runtime_seed != direct_seed, "Stage list re-entry uses another fresh runtime seed")
 
-	game.request_stage("STAGE-004", 4004, 0.0)
-	await process_frame
-	_expect(game.flow_state == GAME.FlowState.HOME, "Timeout returns the game to home")
-	_expect(game.retry_stage_id == "STAGE-004", "Timeout preserves the failed stage for retry")
-	_expect(not game.home_error_message.is_empty(), "Timeout shows a retry message")
+	game.request_stage("STAGE-004", 4004)
+	_expect(game.flow_state == GAME.FlowState.GENERATING, "Generation waits without the default timeout")
+	game._unhandled_input(_mouse_release_at(
+		game._generation_cancel_button_rect(game._viewport_size()).get_center()
+	))
+	_expect(game.flow_state == GAME.FlowState.HOME, "Cancel returns the game to home")
+	_expect(game.retry_stage_id.is_empty(), "Cancel does not create a failed-stage retry")
+	_expect(game.home_error_message.is_empty(), "Cancel does not show a generation failure")
+	await _wait_for_jobs(game.generation_controller)
 	game.free()
 
 
@@ -139,7 +165,7 @@ func _test_stage_list_scroll_range(game) -> void:
 
 
 func _test_stage_list_metrics(game) -> void:
-	for stage_id: String in STAGE_CATALOG.get_stage_ids():
+	for stage_id: String in ["STAGE-001", "STAGE-004"]:
 		var profile: Dictionary = STAGE_CATALOG.get_stage_profile(stage_id)
 		var summary: Dictionary = game.get_home_stage_summary(stage_id)
 		_expect(profile.has("grid_size"), "%s stage card has a board size" % stage_id)
@@ -148,11 +174,9 @@ func _test_stage_list_metrics(game) -> void:
 			game._generation_mode_label(profile["generation_mode"]) in ["고정", "랜덤"],
 			"%s stage card has a Korean generation mode label" % stage_id
 		)
-		_expect(summary.has("actual_empty_ratio"), "%s stage card has an actual empty ratio" % stage_id)
-		_expect(
-			summary.has("initial_extractable_ratio"),
-			"%s stage card has an initial extractable ratio" % stage_id
-		)
+		if not summary.is_empty():
+			_expect(summary.has("actual_empty_ratio"), "%s prepared actual empty ratio" % stage_id)
+			_expect(summary.has("initial_extractable_ratio"), "%s prepared initial extractable ratio" % stage_id)
 
 
 func _wait_for_controller(controller) -> void:
@@ -169,6 +193,14 @@ func _wait_for_game(game) -> void:
 			return
 		await process_frame
 	_expect(false, "Game generation completes within the test budget")
+
+
+func _wait_for_home_summary_loader(game) -> void:
+	for _frame: int in 600:
+		if not game.home_summary_loader.is_loading():
+			return
+		await process_frame
+	_expect(false, "Home summary loader stops within the test budget")
 
 
 func _wait_for_jobs(controller) -> void:

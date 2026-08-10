@@ -100,6 +100,7 @@ func _test_extraction_motion(game) -> void:
 func _test_runtime_snake_motion() -> void:
 	var game = GAME.new()
 	root.add_child(game)
+	game.home_summary_loader.free()
 	await process_frame
 	var bent_arrow := {
 		"id": "SNAKE",
