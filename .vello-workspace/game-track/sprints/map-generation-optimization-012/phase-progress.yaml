@@ -4,5 +4,5 @@ scope_authorization: confirmed
 groups:
   - id: EG-MAP-GENERATION-OPTIMIZATION-012
     status: completed
-next_action: delivery_complete
-sprint_status: delivery_complete
+next_action: user_check
+sprint_status: needs_user_check

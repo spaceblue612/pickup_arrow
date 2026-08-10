@@ -1,7 +1,7 @@
 sprint_id: map-generation-optimization-012
 track: game
 route: direct_execution
-status: delivery_complete
+status: needs_user_check
 started_at: 2026-08-11
 title: "대형 맵 생성 최적화"
 scope_authorization: confirmed

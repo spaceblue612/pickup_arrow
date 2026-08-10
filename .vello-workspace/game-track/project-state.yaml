@@ -1,5 +1,5 @@
 project_id: pickup-arrow
 status: active
 current_sprint: map-generation-optimization-012
-current_sprint_status: delivery_complete
-next_action: delivery_complete
+current_sprint_status: needs_user_check
+next_action: user_check
