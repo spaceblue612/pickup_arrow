@@ -1,8 +1,8 @@
 sprint_id: map-generation-optimization-012
-route: direct_execution
-scope_authorization: confirmed
+route: design_delta
+scope_authorization: pending
 groups:
   - id: EG-MAP-GENERATION-OPTIMIZATION-012
-    status: completed
-next_action: user_check
-sprint_status: needs_user_check
+    status: revision_required
+next_action: user_approval
+sprint_status: needs_user_approval

@@ -36,3 +36,15 @@
 - handoff: 05-implementation-handoff.md
 - group: EG-MAP-GENERATION-OPTIMIZATION-012
 - next_action: user_check
+
+## 2026-08-11 · revision_requested
+
+- stage: implementation
+- handoff: 05-implementation-handoff.md
+- issue: "개별 최적화가 다른 필수 목표를 훼손하며 검사 기준이 누적 보존되지 않음"
+
+## 2026-08-11 · approval_requested
+
+- stage: design
+- handoff: 02-design-handoff.md
+- scope: MAP-GEN-ACCEPTANCE-012

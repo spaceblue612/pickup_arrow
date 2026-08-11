@@ -1,11 +1,12 @@
 sprint_id: map-generation-optimization-012
 track: game
-route: direct_execution
-status: needs_user_check
+route: design_delta
+status: needs_user_approval
 started_at: 2026-08-11
 title: "대형 맵 생성 최적화"
-scope_authorization: confirmed
+scope_authorization: pending
 scope:
   - SYS-ARROW-PLACEMENT
   - SYS-DEPENDENCY-ANALYZER
   - SYS-DEPENDENCY-TARGETING
+  - generation.acceptance_contract

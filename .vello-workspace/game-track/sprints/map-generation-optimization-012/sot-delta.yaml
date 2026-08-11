@@ -1,5 +1,103 @@
 sprint_id: map-generation-optimization-012
 base_sot_ref: ../../current-design/current-design.yaml
 updated_at: 2026-08-11
-updates: []
+updates:
+  - id: MAP-GEN-ACCEPTANCE-012
+    target: generation.acceptance_contract
+    operation: add
+    content:
+      canonical_file: tests/requirements/map_generation_acceptance.json
+      default_scope: [STAGE-007, STAGE-008, STAGE-009, STAGE-010]
+      scope_overrides:
+        MG-MODE-002: [STAGE-008, STAGE-010]
+      stage_modes:
+        STAGE-007: fixed
+        STAGE-008: random
+        STAGE-009: fixed
+        STAGE-010: random
+      metric_definitions:
+        center_occupancy_ratio: "보드 중앙 가로 50% x 세로 50% 영역에서 점유된 셀 비율"
+        bin_occupancy_ratio: "보드를 4x4로 균등 분할한 각 구역의 점유 셀 비율"
+        bent_ratio: "길이 3 이상 화살 중 진행 축이 한 번 이상 바뀌는 화살 비율"
+        map_fingerprint: "화살 ID를 제외하고 head, direction, ordered cells를 정규화한 해시"
+        elapsed_msec: "StageCatalog.build_stage_from_profile 전체 호출의 단조 시계 경과 시간"
+      governance:
+        - id: MG-GOV-001
+          rule: "모든 요구사항은 안정적인 ID, 적용 스테이지, 판정 방식, 필요한 임계값을 가지며 별도 override가 없으면 default_scope를 적용한다."
+        - id: MG-GOV-002
+          rule: "새 요구사항은 기존 요구사항에 추가되며 명시적 사용자 승인 없이 기존 항목을 삭제·완화·대체하지 않는다."
+        - id: MG-GOV-003
+          rule: "구현 계획, 자동 테스트와 결과 보고는 요구사항 ID를 직접 참조한다."
+        - id: MG-GOV-004
+          rule: "요구사항 파일 누락, 스키마 오류, 알 수 없는 필수 ID는 실패로 처리하고 기본값으로 통과시키지 않는다."
+        - id: MG-GOV-005
+          rule: "최적화 결과는 모든 필수 요구사항을 동시에 통과해야 하며 합산 점수나 다른 장점으로 실패를 상쇄하지 않는다."
+      requirements:
+        - id: MG-FUNC-001
+          class: hard
+          goal: "화살의 모든 셀은 배치 가능 격자 안에 있고 서로 겹치지 않는다."
+          verification: automated
+        - id: MG-FUNC-002
+          class: hard
+          goal: "기본 화살 수와 길이 범위, 보충 화살 최대 길이, 목표 점유율을 스테이지 profile과 일치시킨다."
+          verification: automated
+          occupied_cell_tolerance: 1
+        - id: MG-FUNC-003
+          class: hard
+          goal: "모든 화살을 제거하는 완전한 풀이가 존재하고 교착이 없다."
+          verification: automated
+        - id: MG-DIFF-001
+          class: hard
+          goal: "dependency depth와 initial extractable ratio가 각 스테이지 profile 범위 안에 있다."
+          verification: automated
+        - id: MG-SEED-001
+          class: hard
+          goal: "같은 profile과 seed는 동일한 화살 배열과 풀이 순서를 만든다."
+          verification: automated
+        - id: MG-MODE-001
+          class: hard
+          goal: "fixed와 random은 같은 생성·검사 규칙을 사용하고 seed 선택 방식만 다르다."
+          verification: automated
+        - id: MG-MODE-002
+          class: hard
+          goal: "random은 서로 다른 runtime seed에서 실제로 다른 맵 구조를 만든다."
+          verification: automated
+          sample_seed_count: 4
+          minimum_unique_fingerprints: 4
+        - id: MG-SPACE-001
+          class: hard
+          goal: "보드 중앙 절반 영역이 비지 않고 전체 목표 점유율에 비례해 채워진다."
+          verification: automated
+          minimum_center_ratio_from_global: 0.65
+        - id: MG-SPACE-002
+          class: hard
+          goal: "보드를 4x4 구역으로 나눴을 때 모든 구역에 화살 셀이 분포한다."
+          verification: automated
+          minimum_bin_ratio_from_global: 0.50
+        - id: MG-SHAPE-001
+          class: hard
+          goal: "여러 칸 화살 중 충분한 비율이 한 번 이상 꺾여 직선 일렬 배치를 방지한다."
+          verification: automated
+          minimum_bent_ratio: 0.20
+          eligible_min_length: 3
+        - id: MG-SHAPE-002
+          class: hard
+          goal: "대형 맵은 상하좌우 네 방향을 모두 사용한다."
+          verification: automated
+          minimum_direction_count: 4
+        - id: MG-PERF-001
+          class: hard
+          goal: "STAGE-007~010은 실제 stage build 경로에서 각각 10초 미만에 생성된다."
+          verification: automated
+          maximum_elapsed_msec: 10000
+        - id: MG-VISUAL-001
+          class: user_check
+          goal: "외곽 주차, 중앙 공동, 과도한 평행 정렬 없이 기존 게임 레벨처럼 분산·굴곡·꼬임이 보인다."
+          verification: user_check
+      acceptance_policy: "자동 필수 항목 전체 통과 후 MG-VISUAL-001 사용자 확인을 받아야 완료한다."
+    status: planned
+    verification_mode: user_check
+    evidence: []
+    replaces: []
+    closeout_disposition: ""
 unresolved: []
