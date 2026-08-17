@@ -159,9 +159,11 @@ func _update_metrics(stage_id: String) -> void:
 	var expected: Variant = profile["expected_difficulty_level"]
 	var expected_text := "uncalibrated" if expected == null else str(expected)
 	var target: Dictionary = profile["dependency_target"]
+	var shape_target: Dictionary = profile["shape_target"]
 	var generation: Dictionary = stage["generation_metrics"]
 	var analysis: Dictionary = stage["dependency_analysis"]
 	var targeting: Dictionary = stage["dependency_targeting_metrics"]
+	var shape: Dictionary = stage["shape_metrics"]
 	metrics_label.text = "\n".join(PackedStringArray([
 		"[b]Snapshot[/b]",
 		"revision: %s" % metadata["source_revision"],
@@ -175,6 +177,11 @@ func _update_metrics(stage_id: String) -> void:
 		"generation elapsed: %.3f sec" % game.generation_elapsed_seconds,
 		"primary arrows: %d  length: %d..%d" % [profile["primary_arrow_count"], profile["min_length"], profile["max_length"]],
 		"empty ratio: %.3f  filler max: %d" % [profile["target_empty_ratio"], profile["filler_max_length"]],
+		"shape distribution: %dx%d  center: %.2f" % [shape_target["distribution_grid_size"], shape_target["distribution_grid_size"], shape_target["center_region_ratio"]],
+		"shape occupancy relative minimums: center %.3f  bin %.3f" % [shape_target["min_center_occupancy_ratio_from_global"], shape_target["min_bin_occupancy_ratio_from_global"]],
+		"long cells: length >= %d  ratio >= %.3f" % [shape_target["long_arrow_min_length"], shape_target["min_long_cell_ratio"]],
+		"bent arrows: length >= %d  ratio >= %.3f" % [shape_target["bent_arrow_min_length"], shape_target["min_bent_arrow_ratio"]],
+		"complex arrows: length >= %d  turns >= %d  ratio >= %.3f" % [shape_target["complex_arrow_min_length"], shape_target["complex_arrow_min_turns"], shape_target["min_complex_arrow_ratio"]],
 		"dependency depth: %d..%d" % [target["min_dependency_depth"], target["max_dependency_depth"]],
 		"initial extractable: %.3f..%.3f" % [target["min_initial_extractable_ratio"], target["max_initial_extractable_ratio"]],
 		"forced-state reference: %.3f..%.3f (observed only)" % [target["min_forced_state_ratio"], target["max_forced_state_ratio"]],
@@ -183,6 +190,8 @@ func _update_metrics(stage_id: String) -> void:
 		"[b]Observed[/b]",
 		"arrows: %d  filler: %d  occupied: %d" % [analysis["node_count"], generation["filler_arrow_count"], generation["occupied_cell_count"]],
 		"actual empty ratio: %.3f" % generation["actual_empty_ratio"],
+		"shape occupancy: center %.3f  minimum bin %.3f" % [shape["center_occupancy_ratio"], shape["minimum_bin_occupancy_ratio"]],
+		"shape ratios: long %.3f  bent %.3f  complex %.3f  directions %d" % [shape["long_cell_ratio"], shape["bent_arrow_ratio"], shape["complex_arrow_ratio"], shape["direction_count"]],
 		"edges: %d  dependency depth: %d" % [analysis["edge_count"], analysis["dependency_depth"]],
 		"initial extractable: %d / %.3f" % [analysis["initial_extractable_count"], analysis["initial_extractable_ratio"]],
 		"forced states: %d / %.3f" % [analysis["forced_state_count"], analysis["forced_state_ratio"]],

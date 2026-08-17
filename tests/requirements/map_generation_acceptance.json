@@ -1,0 +1,26 @@
+{
+	"schema_version": 1,
+	"default_scope": [
+		"STAGE-007",
+		"STAGE-008",
+		"STAGE-009",
+		"STAGE-010"
+	],
+	"requirements": [
+		{"id": "MG-FUNC-001", "verification": "automated"},
+		{"id": "MG-FUNC-002", "verification": "automated", "source_fields": ["target_empty_ratio", "min_length", "max_length", "filler_max_length"]},
+		{"id": "MG-FUNC-003", "verification": "automated"},
+		{"id": "MG-DIFF-001", "verification": "automated", "source_fields": ["dependency_target"]},
+		{"id": "MG-SEED-001", "verification": "automated"},
+		{"id": "MG-MODE-001", "verification": "automated"},
+		{"id": "MG-MODE-002", "verification": "automated"},
+		{"id": "MG-SPACE-001", "verification": "automated", "source_fields": ["shape_target.center_region_ratio", "shape_target.min_center_occupancy_ratio_from_global"]},
+		{"id": "MG-SPACE-002", "verification": "automated", "source_fields": ["shape_target.distribution_grid_size", "shape_target.min_bin_occupancy_ratio_from_global"]},
+		{"id": "MG-LENGTH-001", "verification": "automated", "source_fields": ["shape_target.long_arrow_min_length", "shape_target.min_long_cell_ratio"]},
+		{"id": "MG-SHAPE-001", "verification": "automated", "source_fields": ["shape_target.bent_arrow_min_length", "shape_target.min_bent_arrow_ratio"]},
+		{"id": "MG-SHAPE-002", "verification": "automated", "source_fields": ["shape_target.min_direction_count"]},
+		{"id": "MG-SHAPE-003", "verification": "automated", "source_fields": ["shape_target.complex_arrow_min_length", "shape_target.complex_arrow_min_turns", "shape_target.min_complex_arrow_ratio"]},
+		{"id": "MG-PERF-001", "verification": "automated", "maximum_elapsed_msec": 10000},
+		{"id": "MG-VISUAL-001", "verification": "user_check"}
+	]
+}

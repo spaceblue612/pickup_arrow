@@ -1,6 +1,6 @@
 sprint_id: map-generation-optimization-012
 base_sot_ref: ../../current-design/current-design.yaml
-updated_at: 2026-08-11
+updated_at: 2026-08-17
 updates:
   - id: MAP-GEN-ACCEPTANCE-012
     target: generation.acceptance_contract
@@ -16,9 +16,11 @@ updates:
         STAGE-009: fixed
         STAGE-010: random
       metric_definitions:
-        center_occupancy_ratio: "보드 중앙 가로 50% x 세로 50% 영역에서 점유된 셀 비율"
-        bin_occupancy_ratio: "보드를 4x4로 균등 분할한 각 구역의 점유 셀 비율"
-        bent_ratio: "길이 3 이상 화살 중 진행 축이 한 번 이상 바뀌는 화살 비율"
+        center_occupancy_ratio: "profile의 center_region_ratio로 정한 중앙 영역에서 점유된 셀 비율"
+        bin_occupancy_ratio: "profile의 distribution_grid_size에 따라 균등 분할한 각 구역의 점유 셀 비율"
+        long_cell_ratio: "전체 점유 셀 중 profile의 long_arrow_min_length 이상 화살이 차지하는 셀 비율"
+        bent_ratio: "profile의 bent_arrow_min_length 이상 화살 중 한 번 이상 꺾이는 화살 비율"
+        complex_arrow_ratio: "profile의 complex_arrow_min_length 이상 화살 중 complex_arrow_min_turns 이상 꺾이는 화살 비율"
         map_fingerprint: "화살 ID를 제외하고 head, direction, ordered cells를 정규화한 해시"
         elapsed_msec: "StageCatalog.build_stage_from_profile 전체 호출의 단조 시계 경과 시간"
       governance:
@@ -32,6 +34,10 @@ updates:
           rule: "요구사항 파일 누락, 스키마 오류, 알 수 없는 필수 ID는 실패로 처리하고 기본값으로 통과시키지 않는다."
         - id: MG-GOV-005
           rule: "최적화 결과는 모든 필수 요구사항을 동시에 통과해야 하며 합산 점수나 다른 장점으로 실패를 상쇄하지 않는다."
+        - id: MG-GOV-006
+          rule: "생성 편의나 성능을 위해 외곽부터 채우거나 중앙 탐색을 생략하지 않으며, profile의 분산·길이·굴곡 목표를 생성 전략보다 우선한다."
+        - id: MG-GOV-007
+          rule: "성능 개선은 같은 profile과 seed의 모든 필수 밸런스 판정을 통과한 결과끼리만 비교하며 밸런스 조건 완화는 최적화로 인정하지 않는다."
       requirements:
         - id: MG-FUNC-001
           class: hard
@@ -39,9 +45,10 @@ updates:
           verification: automated
         - id: MG-FUNC-002
           class: hard
-          goal: "기본 화살 수와 길이 범위, 보충 화살 최대 길이, 목표 점유율을 스테이지 profile과 일치시킨다."
+          goal: "기본 화살 수와 길이 범위, 보충 화살 최대 길이와 전체 점유율을 스테이지 profile의 수치와 일치시킨다."
           verification: automated
           occupied_cell_tolerance: 1
+          target_field: target_empty_ratio
         - id: MG-FUNC-003
           class: hard
           goal: "모든 화살을 제거하는 완전한 풀이가 존재하고 교착이 없다."
@@ -66,38 +73,78 @@ updates:
           minimum_unique_fingerprints: 4
         - id: MG-SPACE-001
           class: hard
-          goal: "보드 중앙 절반 영역이 비지 않고 전체 목표 점유율에 비례해 채워진다."
+          goal: "profile이 지정한 중앙 범위와 최소 상대 점유율을 만족해 중앙 공동을 만들지 않는다."
           verification: automated
-          minimum_center_ratio_from_global: 0.65
+          region_field: center_region_ratio
+          threshold_field: min_center_occupancy_ratio_from_global
         - id: MG-SPACE-002
           class: hard
-          goal: "보드를 4x4 구역으로 나눴을 때 모든 구역에 화살 셀이 분포한다."
+          goal: "profile이 지정한 분할 수로 보드를 나눴을 때 모든 구역이 최소 상대 점유율을 만족한다."
           verification: automated
-          minimum_bin_ratio_from_global: 0.50
+          grid_field: distribution_grid_size
+          threshold_field: min_bin_occupancy_ratio_from_global
+        - id: MG-LENGTH-001
+          class: hard
+          goal: "짧은 보충 화살만으로 보드를 채우지 않고 profile이 정한 긴 화살의 최소 길이와 점유 셀 비율을 만족한다."
+          verification: automated
+          length_field: long_arrow_min_length
+          threshold_field: min_long_cell_ratio
         - id: MG-SHAPE-001
           class: hard
-          goal: "여러 칸 화살 중 충분한 비율이 한 번 이상 꺾여 직선 일렬 배치를 방지한다."
+          goal: "profile이 정한 길이 이상의 화살이 설정된 비율만큼 한 번 이상 꺾여 직선 일렬 배치를 방지한다."
           verification: automated
-          minimum_bent_ratio: 0.20
-          eligible_min_length: 3
+          length_field: bent_arrow_min_length
+          threshold_field: min_bent_arrow_ratio
         - id: MG-SHAPE-002
           class: hard
-          goal: "대형 맵은 상하좌우 네 방향을 모두 사용한다."
+          goal: "profile이 정한 최소 진행 방향 수를 만족한다."
           verification: automated
-          minimum_direction_count: 4
+          threshold_field: min_direction_count
+        - id: MG-SHAPE-003
+          class: hard
+          goal: "profile이 정한 길이 이상의 화살이 설정된 비율과 최소 굴곡 횟수를 만족해 복잡하게 얽힌 경로를 만든다."
+          verification: automated
+          length_field: complex_arrow_min_length
+          turn_field: complex_arrow_min_turns
+          threshold_field: min_complex_arrow_ratio
         - id: MG-PERF-001
           class: hard
-          goal: "STAGE-007~010은 실제 stage build 경로에서 각각 10초 미만에 생성된다."
+          goal: "모든 profile 기반 기능·난이도·분산·길이·굴곡 조건을 통과한 STAGE-007~010이 실제 stage build 경로에서 각각 10초 미만에 생성된다."
           verification: automated
           maximum_elapsed_msec: 10000
         - id: MG-VISUAL-001
           class: user_check
-          goal: "외곽 주차, 중앙 공동, 과도한 평행 정렬 없이 기존 게임 레벨처럼 분산·굴곡·꼬임이 보인다."
+          goal: "외곽 주차, 중앙 공동, 과도한 평행 정렬 없이 profile의 점유·분산·길이·굴곡 수치에 맞는 화살이 보드 전체에 고르게 퍼지고 조화롭게 얽힌다."
           verification: user_check
       acceptance_policy: "자동 필수 항목 전체 통과 후 MG-VISUAL-001 사용자 확인을 받아야 완료한다."
-    status: planned
+    status: user_accepted
     verification_mode: user_check
-    evidence: []
+    evidence: [05-implementation-handoff.md, tests/requirements/map_generation_acceptance.json, tests/test_large_stage_generation.gd, tests/test_shape_balance_tuning.gd, "2026-08-17 사용자 시각 확인"]
     replaces: []
-    closeout_disposition: ""
+    closeout_disposition: applied
+  - id: MAP-GEN-SHAPE-BALANCE-012
+    target: balance.authoring.metric_catalog.configurable_fields
+    operation: extend
+    content:
+      existing_fields_preserved: [target_empty_ratio, min_length, max_length, filler_max_length, min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio]
+      added_fields:
+        distribution_grid_size: {type: int, range: [2, 8]}
+        center_region_ratio: {type: float, range: [0.1, 1.0]}
+        min_center_occupancy_ratio_from_global: {type: float, range: [0.0, 1.0]}
+        min_bin_occupancy_ratio_from_global: {type: float, range: [0.0, 1.0]}
+        long_arrow_min_length: {type: int, range: [1, 999]}
+        min_long_cell_ratio: {type: float, range: [0.0, 1.0]}
+        bent_arrow_min_length: {type: int, range: [2, 999]}
+        min_bent_arrow_ratio: {type: float, range: [0.0, 1.0]}
+        complex_arrow_min_length: {type: int, range: [3, 999]}
+        complex_arrow_min_turns: {type: int, range: [2, 998]}
+        min_complex_arrow_ratio: {type: float, range: [0.0, 1.0]}
+        min_direction_count: {type: int, range: [1, 4]}
+      source: "Google Sheets stage_profiles -> validated local data/stage_balance.json"
+      missing_or_invalid_policy: "게시와 런타임 snapshot 로드를 실패시키며 코드 기본값으로 대체하지 않는다."
+    status: verified
+    verification_mode: automated
+    evidence: [05-implementation-handoff.md, tools/balance_sheet/tests/schema.test.mjs, tools/balance_sheet/tests/apps_script.test.mjs, tests/test_stage_catalog.gd, tests/test_shape_balance_tuning.gd]
+    replaces: []
+    closeout_disposition: applied
 unresolved: []

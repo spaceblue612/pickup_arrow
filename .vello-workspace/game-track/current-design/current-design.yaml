@@ -1,7 +1,7 @@
 schema_version: 1
 track: game
 scope_id: game
-updated_at: 2026-08-03
+updated_at: 2026-08-17
 source_sprints:
   - arrow-puzzle-prototype-001
   - bent-arrow-generation-002
@@ -11,6 +11,7 @@ source_sprints:
   - board-foundation-006
   - balance-authoring-007
   - map-generation-mode-008
+  - map-generation-optimization-012
 title: "Pickup Arrow 현재 디자인"
 sections:
   overview:
@@ -63,7 +64,14 @@ sections:
       fixed: "확정 seed로 동일한 맵을 재현하며 preview에서만 다른 candidate seed를 반복 탐색한다."
       random: "새 플레이마다 runtime seed에서 후보 탐색을 시작하고 snapshot의 base seed는 변경하지 않는다."
       hard_validity: [resource_limit, non_overlapping_cells, complete_solution, no_deadlock]
-      difficulty_policy: "목표 지표 미달만으로 유효 맵을 거절하지 않는다."
+      difficulty_policy: "dependency 목표와 profile의 공간 분산·길이·굴곡 목표를 모두 통과한 후보만 채택한다."
+    acceptance_contract:
+      canonical_file: tests/requirements/map_generation_acceptance.json
+      scope: [STAGE-007, STAGE-008, STAGE-009, STAGE-010]
+      performance_limit_msec: 10000
+      required: ["비중복과 완전한 풀이", "profile 점유율과 의존성 목표", "중앙·구역별 균등 분산", "긴 화살 셀 비율", "1회 이상·2회 이상 굴곡 비율", "같은 seed 결정성", "random seed 다양성"]
+      visual_acceptance: "외곽 편중과 중앙 공동 없이 긴 굴곡 화살이 보드 전체에 조화롭게 얽혀야 한다."
+      governance: "생성 편의나 성능을 위해 profile 목표를 완화하거나 기존 필수 요구사항을 삭제하지 않는다."
     length_ranges:
       STAGE-001: [1, 6]
       STAGE-002: [3, 10]
@@ -126,6 +134,7 @@ sections:
           identity: [stage_id, stage_order, operator_note]
           board: [grid_width, grid_height]
           generation: [generation_mode, seed, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length]
+          shape: [distribution_grid_size, center_region_ratio, min_center_occupancy_ratio_from_global, min_bin_occupancy_ratio_from_global, long_arrow_min_length, min_long_cell_ratio, bent_arrow_min_length, min_bent_arrow_ratio, complex_arrow_min_length, complex_arrow_min_turns, min_complex_arrow_ratio, min_direction_count]
           dependency: [min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio]
           budget: [max_candidate_attempts]
         constraints:
@@ -151,20 +160,25 @@ sections:
           - attempt_count
           - selected_seed
           - has_complete_solution
+          - center_occupancy_ratio_from_global
+          - min_bin_occupancy_ratio_from_global
+          - long_cell_ratio
+          - bent_arrow_ratio
+          - complex_arrow_ratio
+          - direction_count
         deferred_metrics:
           - "새 후보 채택 조건"
-          - "형상·시각 지표"
           - "고급 의존 지표"
           - "플레이 제약 지표"
       workflow:
         canonical_source: "Google Sheets의 stage_profiles 탭"
-        schema_version: 2
+        schema_version: 3
         tabs:
           _meta:
             columns: [key, value, description]
             edit_policy: warning_protected
           stage_profiles:
-            columns: [stage_id, stage_order, expected_difficulty_level, grid_width, grid_height, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio, max_candidate_attempts, operator_note]
+            columns: [stage_id, stage_order, expected_difficulty_level, grid_width, grid_height, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio, max_candidate_attempts, distribution_grid_size, center_region_ratio, min_center_occupancy_ratio_from_global, min_bin_occupancy_ratio_from_global, long_arrow_min_length, min_long_cell_ratio, bent_arrow_min_length, min_bent_arrow_ratio, complex_arrow_min_length, complex_arrow_min_turns, min_complex_arrow_ratio, min_direction_count, operator_note]
             data_start_row: 2
             edit_policy: "헤더는 보호 경고, 운영 데이터는 편집 가능"
           metric_guide:
@@ -172,7 +186,7 @@ sections:
             classifications: [configurable, observed, deferred]
             description_language: ko
             edit_policy: warning_protected
-        migration: "v1의 기존 profile은 generation_mode=fixed로 채우고 initial content에 random STAGE-004를 추가한 뒤 v2로 검증·게시한다."
+        migration: "v1·v2 profile을 보존하고 형상 목표 열을 추가해 v3로 검증·게시한다."
         row_policy: "완전한 빈 행만 무시하고 부분 행·수식·임의 표준 열·중복 stage_id 또는 stage_order·지원하지 않는 generation_mode는 전체 게시를 거절한다."
         stage_registry: "유효한 stage profile은 stage_order 순서로 등록하고 generation_mode에 따라 고정 또는 플레이별 생성한다."
         operator_flow:
@@ -214,8 +228,8 @@ sections:
       balance_profile:
         source: "SYS-BALANCE-SYNC가 생성한 data/stage_balance.json"
         key: stage_id
-        loading: "schema_version 2, content_hash와 전체 profile을 검증하고 stage_order 순서의 immutable index를 구성한다."
-        fields: [stage_order, expected_difficulty_level, grid_size, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, dependency_target, max_candidate_attempts]
+        loading: "schema_version 3, content_hash와 전체 profile을 검증하고 stage_order 순서의 immutable index를 구성한다."
+        fields: [stage_order, expected_difficulty_level, grid_size, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, dependency_target, shape_target, max_candidate_attempts]
         seed_policy: "fixed는 profile seed를 그대로 사용하고 random은 생성 controller가 제공한 runtime seed를 사용한다."
         composition: "같은 stage_id의 별도 보드 콘텐츠가 있으면 결합하고 없으면 전체 직사각 보드로 생성한다."
         error_policy: "스냅샷 누락·버전 불일치·잘못된 profile 또는 mode는 하드코딩 기본값으로 대체하지 않는다."
@@ -228,7 +242,7 @@ sections:
       execution_boundary: "현재 시트 편집자의 현재 문서 권한으로 실행하며 서비스 계정·JSON 키·Google Cloud Console을 사용하지 않는다."
       menu: [최초 구성, 구조 마이그레이션, 데이터 검증]
       setup: "빈 시트에 세 표준 탭과 fixed STAGE-001~003, random STAGE-004, 입력 검증과 보호 경고를 생성한다."
-      migration: "지원되는 v1 또는 부분 v2 구조를 백업·복구한 뒤 generation_mode를 포함한 schema_version 2로 변환한다."
+      migration: "지원되는 v1·v2 구조를 백업·복구한 뒤 generation_mode와 형상 목표를 포함한 schema_version 3으로 변환한다."
       validation: "필수 탭·헤더·리터럴·타입·범위·교차 필드·중복을 검사하고 셀 위치가 포함된 오류를 반환한다."
       failure_policy: "부분 구성을 완료로 표시하지 않고 기존 지원 구조와 복구 가능한 백업을 보존한다."
     SYS-BALANCE-SYNC:

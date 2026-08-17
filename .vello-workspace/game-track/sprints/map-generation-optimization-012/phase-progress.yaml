@@ -1,8 +1,10 @@
 sprint_id: map-generation-optimization-012
 route: design_delta
-scope_authorization: pending
+scope_authorization: confirmed
 groups:
+  - id: EG-MAP-BALANCE-CONTRACT-012
+    status: completed
   - id: EG-MAP-GENERATION-OPTIMIZATION-012
-    status: revision_required
-next_action: user_approval
-sprint_status: needs_user_approval
+    status: completed
+next_action: complete
+sprint_status: completed

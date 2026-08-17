@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const PROJECT_ID = "pickup-arrow";
 export const META_SHEET = "_meta";
 export const PROFILE_SHEET = "stage_profiles";
@@ -19,6 +19,18 @@ export const PROFILE_COLUMNS = Object.freeze([
 	"max_length",
 	"target_empty_ratio",
 	"filler_max_length",
+	"distribution_grid_size",
+	"center_region_ratio",
+	"min_center_occupancy_ratio_from_global",
+	"min_bin_occupancy_ratio_from_global",
+	"long_arrow_min_length",
+	"min_long_cell_ratio",
+	"bent_arrow_min_length",
+	"min_bent_arrow_ratio",
+	"complex_arrow_min_length",
+	"complex_arrow_min_turns",
+	"min_complex_arrow_ratio",
+	"min_direction_count",
 	"min_dependency_depth",
 	"max_dependency_depth",
 	"min_initial_extractable_ratio",
@@ -62,6 +74,18 @@ const FIELD_SPECS = Object.freeze({
 	max_length: { type: "int", required: true, min: 1, group: "generation", range: "min_length..playable cell count", description: "Maximum primary arrow length" },
 	target_empty_ratio: { type: "float", required: true, min: 0, max: 1, group: "generation", range: "0.0..1.0", description: "Target empty-cell ratio" },
 	filler_max_length: { type: "int", required: true, min: 1, group: "generation", range: "1..playable cell count", description: "Maximum filler arrow length" },
+	distribution_grid_size: { type: "int", required: true, min: 2, max: 8, group: "shape", range: "2..8", description: "Uniform occupancy measurement grid size" },
+	center_region_ratio: { type: "float", required: true, min: 0.1, max: 1, group: "shape", range: "0.1..1.0", description: "Centered board width and height ratio used for occupancy measurement" },
+	min_center_occupancy_ratio_from_global: { type: "float", required: true, min: 0, max: 1, group: "shape", range: "0.0..1.0", description: "Minimum center occupancy relative to global occupancy" },
+	min_bin_occupancy_ratio_from_global: { type: "float", required: true, min: 0, max: 1, group: "shape", range: "0.0..1.0", description: "Minimum occupancy in every distribution bin relative to global occupancy" },
+	long_arrow_min_length: { type: "int", required: true, min: 1, group: "shape", range: "1..playable cell count", description: "Minimum arrow length counted as long" },
+	min_long_cell_ratio: { type: "float", required: true, min: 0, max: 1, group: "shape", range: "0.0..1.0", description: "Minimum occupied-cell share belonging to long arrows" },
+	bent_arrow_min_length: { type: "int", required: true, min: 2, group: "shape", range: "2..playable cell count", description: "Minimum arrow length eligible for bent-arrow ratio" },
+	min_bent_arrow_ratio: { type: "float", required: true, min: 0, max: 1, group: "shape", range: "0.0..1.0", description: "Minimum one-or-more-turn ratio among eligible arrows" },
+	complex_arrow_min_length: { type: "int", required: true, min: 3, group: "shape", range: "3..playable cell count", description: "Minimum arrow length eligible for complex-arrow ratio" },
+	complex_arrow_min_turns: { type: "int", required: true, min: 2, group: "shape", range: "2..playable cell count - 1", description: "Minimum turn count for a complex arrow" },
+	min_complex_arrow_ratio: { type: "float", required: true, min: 0, max: 1, group: "shape", range: "0.0..1.0", description: "Minimum complex-arrow ratio among eligible arrows" },
+	min_direction_count: { type: "int", required: true, min: 1, max: 4, group: "shape", range: "1..4", description: "Minimum number of arrow exit directions used" },
 	min_dependency_depth: { type: "int", required: true, min: 1, group: "dependency", range: ">= 1", description: "Minimum dependency depth" },
 	max_dependency_depth: { type: "int", required: true, min: 1, group: "dependency", range: ">= minimum", description: "Maximum dependency depth" },
 	min_initial_extractable_ratio: { type: "float", required: true, min: 0, max: 1, group: "dependency", range: "0.0..1.0", description: "Minimum initial extractable ratio" },
@@ -73,10 +97,10 @@ const FIELD_SPECS = Object.freeze({
 });
 
 export const INITIAL_PROFILE_ROWS = Object.freeze([
-	["STAGE-001", 1, "", 9, 9, 1001, "fixed", 3, 1, 6, 0.70, 3, 2, 4, 0.50, 1.00, 0.00, 0.25, 64, ""],
-	["STAGE-002", 2, "", 9, 9, 2002, "fixed", 4, 3, 10, 0.55, 3, 3, 5, 0.30, 0.60, 0.10, 0.40, 64, ""],
-	["STAGE-003", 3, "", 9, 9, 3003, "fixed", 5, 5, 14, 0.40, 3, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ""],
-	["STAGE-004", 4, "", 9, 9, 4004, "random", 5, 5, 14, 0.40, 3, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ""],
+	["STAGE-001", 1, "", 9, 9, 1001, "fixed", 3, 1, 6, 0.70, 3, 3, 0.5, 0, 0, 3, 0, 3, 0, 5, 2, 0, 1, 2, 4, 0.50, 1.00, 0.00, 0.25, 64, ""],
+	["STAGE-002", 2, "", 9, 9, 2002, "fixed", 4, 3, 10, 0.55, 3, 3, 0.5, 0, 0, 4, 0, 4, 0, 6, 2, 0, 1, 3, 5, 0.30, 0.60, 0.10, 0.40, 64, ""],
+	["STAGE-003", 3, "", 9, 9, 3003, "fixed", 5, 5, 14, 0.40, 3, 3, 0.5, 0, 0, 5, 0, 5, 0, 7, 2, 0, 1, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ""],
+	["STAGE-004", 4, "", 9, 9, 4004, "random", 5, 5, 14, 0.40, 3, 3, 0.5, 0, 0, 5, 0, 5, 0, 7, 2, 0, 1, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ""],
 ]);
 
 const OBSERVED_METRICS = Object.freeze([
@@ -95,6 +119,11 @@ const OBSERVED_METRICS = Object.freeze([
 	["attempt_count", "budget", "int", "1..max_candidate_attempts", "Candidate attempts used"],
 	["selected_seed", "generation", "int", "0..2147483647+", "Selected deterministic candidate seed"],
 	["has_complete_solution", "dependency", "bool", "true or false", "Whether analysis found a complete solution"],
+	["center_occupancy_ratio", "shape", "float", "0.0..1.0", "Measured occupancy ratio in the configured center region"],
+	["minimum_bin_occupancy_ratio", "shape", "float", "0.0..1.0", "Lowest measured occupancy ratio among configured distribution bins"],
+	["long_cell_ratio", "shape", "float", "0.0..1.0", "Occupied-cell share belonging to configured long arrows"],
+	["bent_arrow_ratio", "shape", "float", "0.0..1.0", "One-or-more-turn ratio among configured eligible arrows"],
+	["complex_arrow_ratio", "shape", "float", "0.0..1.0", "Configured multi-turn ratio among eligible arrows"],
 ]);
 
 const DEFERRED_METRICS = Object.freeze([
@@ -155,7 +184,7 @@ export function normalizeSheetValues(sheetValues, { sourceRevision = "local" } =
 		const rawRow = sheetValues[PROFILE_SHEET][rowIndex] ?? [];
 		if (isBlankRow(rawRow)) continue;
 		if (rawRow.length > PROFILE_COLUMNS.length && rawRow.slice(PROFILE_COLUMNS.length).some((value) => !isBlank(value))) {
-			issues.push(`${PROFILE_SHEET}!U${rowIndex + 1}: unexpected column outside the 20-field schema`);
+			issues.push(`${PROFILE_SHEET}!${columnName(PROFILE_COLUMNS.length + 1)}${rowIndex + 1}: unexpected column outside the ${PROFILE_COLUMNS.length}-field schema`);
 		}
 		const values = Object.fromEntries(PROFILE_COLUMNS.map((field, index) => [field, rawRow[index] ?? ""]));
 		const parsed = {};
@@ -175,7 +204,7 @@ export function normalizeSheetValues(sheetValues, { sourceRevision = "local" } =
 		}
 		profiles.push(toRuntimeProfile(parsed));
 	}
-	if (profiles.length === 0) issues.push(`${PROFILE_SHEET}!A2:T: at least one stage profile is required`);
+	if (profiles.length === 0) issues.push(`${PROFILE_SHEET}!A2:${columnName(PROFILE_COLUMNS.length)}: at least one stage profile is required`);
 	if (issues.length > 0) throw new BalanceValidationError(issues);
 
 	profiles.sort((left, right) => left.stage_order - right.stage_order || left.stage_id.localeCompare(right.stage_id));
@@ -195,10 +224,55 @@ export function validateSnapshot(snapshot) {
 	if (snapshot.schema_version !== SCHEMA_VERSION) issues.push(`schema_version must be ${SCHEMA_VERSION}`);
 	if (typeof snapshot.source_revision !== "string" || snapshot.source_revision.length === 0) issues.push("source_revision must be a non-empty string");
 	if (!Array.isArray(snapshot.profiles)) issues.push("profiles must be an array");
+	if (Array.isArray(snapshot.profiles)) {
+		snapshot.profiles.forEach((profile, index) => validateRuntimeShapeTarget(profile, index, issues));
+	}
 	if (issues.length > 0) throw new BalanceValidationError(issues);
 	const expectedHash = sha256(canonicalJson({ schema_version: snapshot.schema_version, profiles: snapshot.profiles }));
 	if (snapshot.content_hash !== expectedHash) throw new BalanceValidationError(["content_hash does not match canonical snapshot content"]);
 	return snapshot;
+}
+
+function validateRuntimeShapeTarget(profile, profileIndex, issues) {
+	if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+		issues.push(`profiles[${profileIndex}] must be an object`);
+		return;
+	}
+	const target = profile.shape_target;
+	if (!target || typeof target !== "object" || Array.isArray(target)) {
+		issues.push(`profiles[${profileIndex}].shape_target must be an object`);
+		return;
+	}
+	const integerRanges = {
+		distribution_grid_size: [2, 8],
+		long_arrow_min_length: [1, Number.MAX_SAFE_INTEGER],
+		bent_arrow_min_length: [2, Number.MAX_SAFE_INTEGER],
+		complex_arrow_min_length: [3, Number.MAX_SAFE_INTEGER],
+		complex_arrow_min_turns: [2, Number.MAX_SAFE_INTEGER],
+		min_direction_count: [1, 4],
+	};
+	for (const [field, [minimum, maximum]] of Object.entries(integerRanges)) {
+		if (!Number.isInteger(target[field]) || target[field] < minimum || target[field] > maximum) {
+			issues.push(`profiles[${profileIndex}].shape_target.${field} is invalid`);
+		}
+	}
+	for (const field of [
+		"center_region_ratio", "min_center_occupancy_ratio_from_global",
+		"min_bin_occupancy_ratio_from_global", "min_long_cell_ratio",
+		"min_bent_arrow_ratio", "min_complex_arrow_ratio",
+	]) {
+		if (typeof target[field] !== "number" || target[field] < 0 || target[field] > 1) {
+			issues.push(`profiles[${profileIndex}].shape_target.${field} must be within 0..1`);
+		}
+	}
+	if (typeof target.center_region_ratio === "number" && target.center_region_ratio < 0.1) {
+		issues.push(`profiles[${profileIndex}].shape_target.center_region_ratio must be at least 0.1`);
+	}
+	if (Number.isInteger(target.complex_arrow_min_turns)
+			&& Number.isInteger(target.complex_arrow_min_length)
+			&& target.complex_arrow_min_turns >= target.complex_arrow_min_length) {
+		issues.push(`profiles[${profileIndex}].shape_target.complex_arrow_min_turns must be less than complex_arrow_min_length`);
+	}
 }
 
 export function canonicalJson(value) {
@@ -304,14 +378,17 @@ function validateProfileCrossFields(profile, row, issues) {
 		issues.push(`${address("D")}:${address("E")}: grid cell count must not exceed 10000`);
 	}
 	const cellCount = profile.grid_width * profile.grid_height;
-	for (const [field, column] of [["primary_arrow_count", "H"], ["min_length", "I"], ["max_length", "J"], ["filler_max_length", "L"]]) {
+	for (const [field, column] of [["primary_arrow_count", "H"], ["min_length", "I"], ["max_length", "J"], ["filler_max_length", "L"], ["long_arrow_min_length", "Q"], ["bent_arrow_min_length", "S"], ["complex_arrow_min_length", "U"]]) {
 		if (Number.isFinite(profile[field]) && Number.isFinite(cellCount) && profile[field] > cellCount) issues.push(`${address(column)} (${field}): must not exceed playable cell count ${cellCount}`);
+	}
+	if (Number.isFinite(profile.complex_arrow_min_turns) && Number.isFinite(profile.complex_arrow_min_length) && profile.complex_arrow_min_turns >= profile.complex_arrow_min_length) {
+		issues.push(`${address("V")} (complex_arrow_min_turns): must be less than complex_arrow_min_length`);
 	}
 	for (const [minimum, maximum, column] of [
 		["min_length", "max_length", "J"],
-		["min_dependency_depth", "max_dependency_depth", "N"],
-		["min_initial_extractable_ratio", "max_initial_extractable_ratio", "P"],
-		["min_forced_state_ratio", "max_forced_state_ratio", "R"],
+		["min_dependency_depth", "max_dependency_depth", "Z"],
+		["min_initial_extractable_ratio", "max_initial_extractable_ratio", "AB"],
+		["min_forced_state_ratio", "max_forced_state_ratio", "AD"],
 	]) {
 		if (Number.isFinite(profile[minimum]) && Number.isFinite(profile[maximum]) && profile[maximum] < profile[minimum]) issues.push(`${address(column)} (${maximum}): must be at least ${minimum}`);
 	}
@@ -330,6 +407,20 @@ function toRuntimeProfile(row) {
 		max_length: row.max_length,
 		target_empty_ratio: row.target_empty_ratio,
 		filler_max_length: row.filler_max_length,
+		shape_target: {
+			distribution_grid_size: row.distribution_grid_size,
+			center_region_ratio: row.center_region_ratio,
+			min_center_occupancy_ratio_from_global: row.min_center_occupancy_ratio_from_global,
+			min_bin_occupancy_ratio_from_global: row.min_bin_occupancy_ratio_from_global,
+			long_arrow_min_length: row.long_arrow_min_length,
+			min_long_cell_ratio: row.min_long_cell_ratio,
+			bent_arrow_min_length: row.bent_arrow_min_length,
+			min_bent_arrow_ratio: row.min_bent_arrow_ratio,
+			complex_arrow_min_length: row.complex_arrow_min_length,
+			complex_arrow_min_turns: row.complex_arrow_min_turns,
+			min_complex_arrow_ratio: row.min_complex_arrow_ratio,
+			min_direction_count: row.min_direction_count,
+		},
 		dependency_target: {
 			min_dependency_depth: row.min_dependency_depth,
 			max_dependency_depth: row.max_dependency_depth,

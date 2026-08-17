@@ -16,7 +16,10 @@ func _run() -> void:
 	root.add_child(preview)
 	await process_frame
 	await process_frame
-	_expect(preview.stage_selector.item_count == 4, "Preview lists every snapshot stage")
+	_expect(
+		preview.stage_selector.item_count == STAGE_CATALOG.get_stage_ids().size(),
+		"Preview lists every snapshot stage"
+	)
 	_expect(preview.game.read_only_preview, "Preview game ignores player extraction input")
 	_expect(not preview.metrics_panel.visible, "Preview metrics are collapsed by default")
 	preview._toggle_metrics()
@@ -29,6 +32,7 @@ func _run() -> void:
 		"Preview displays the snapshot hash"
 	)
 	_expect(preview.metrics_label.text.contains("Observed"), "Preview displays observed metrics")
+	_expect(preview.metrics_label.text.contains("shape distribution"), "Preview displays shape balance targets")
 	_expect(preview.regenerate_button.text == "New Fixed Candidate", "Fixed stage offers a new candidate")
 	var first_fixed_seed: int = preview.game.last_runtime_seed
 	var first_fixed_arrows: Array = preview.game.active_stage_definition["arrows"].duplicate(true)

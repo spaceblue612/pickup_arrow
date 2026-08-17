@@ -3,6 +3,7 @@ extends RefCounted
 
 const ARROW_PLACEMENT := preload("res://scripts/arrow_placement.gd")
 const DEPENDENCY_ANALYZER := preload("res://scripts/dependency_analyzer.gd")
+const GENERATION_QUALITY := preload("res://scripts/generation_quality.gd")
 
 const CANDIDATE_SEED_STEP := 1000003
 const REQUIRED_TARGET_FIELDS := [
@@ -26,7 +27,8 @@ static func select(
 	dependency_target: Dictionary,
 	max_candidate_attempts: int,
 	blocked_cells: Array = [],
-	progress: Variant = null
+	progress: Variant = null,
+	shape_target: Dictionary = {}
 ) -> Dictionary:
 	var target_error := _validate_dependency_target(dependency_target)
 	if not target_error.is_empty():
@@ -61,6 +63,15 @@ static func select(
 			),
 			"Maximum candidate attempts must be positive"
 		)
+	if shape_target.is_empty():
+		shape_target = _unconstrained_shape_target()
+	var shape_error := GENERATION_QUALITY.validate_target(shape_target, grid_size)
+	if not shape_error.is_empty():
+		return _result(
+			[], PackedStringArray(), {}, {},
+			_targeting_metrics(base_seed, 0, 0, max_candidate_attempts, dependency_target, false),
+			shape_error
+		)
 
 	var best_candidate: Dictionary = {}
 	var generation_failure_count := 0
@@ -69,6 +80,8 @@ static func select(
 		if progress != null:
 			progress.begin_candidate(candidate_index + 1)
 		var candidate_seed := base_seed + candidate_index * CANDIDATE_SEED_STEP
+		var construction_target := dependency_target.duplicate(true)
+		construction_target.merge(shape_target, true)
 		var generation: Dictionary = ARROW_PLACEMENT.generate(
 			candidate_seed,
 			grid_size,
@@ -79,9 +92,15 @@ static func select(
 			filler_max_length,
 			blocked_cells,
 			dependency_target["min_dependency_depth"],
-			dependency_target
+			construction_target
 		)
 		if not generation["error"].is_empty():
+			generation_failure_count += 1
+			continue
+		var shape_metrics: Dictionary = GENERATION_QUALITY.measure(
+			generation["arrows"], grid_size, blocked_cells, shape_target
+		)
+		if not shape_metrics["matches_target"]:
 			generation_failure_count += 1
 			continue
 
@@ -101,6 +120,7 @@ static func select(
 			"index": candidate_index,
 			"generation": generation,
 			"analysis": dependency_analysis,
+			"shape_metrics": shape_metrics,
 			"score": score,
 		}
 		if best_candidate.is_empty() or _score_is_better(score, best_candidate["score"]):
@@ -223,7 +243,8 @@ static func _selected_result(
 			generation_failure_count,
 			analysis_failure_count
 		),
-		""
+		"",
+		candidate["shape_metrics"]
 	)
 
 
@@ -251,6 +272,23 @@ static func _validate_dependency_target(dependency_target: Dictionary) -> String
 
 static func _is_number(value: Variant) -> bool:
 	return value is int or value is float
+
+
+static func _unconstrained_shape_target() -> Dictionary:
+	return {
+		"distribution_grid_size": 2,
+		"center_region_ratio": 0.5,
+		"min_center_occupancy_ratio_from_global": 0.0,
+		"min_bin_occupancy_ratio_from_global": 0.0,
+		"long_arrow_min_length": 1,
+		"min_long_cell_ratio": 0.0,
+		"bent_arrow_min_length": 2,
+		"min_bent_arrow_ratio": 0.0,
+		"complex_arrow_min_length": 3,
+		"complex_arrow_min_turns": 2,
+		"min_complex_arrow_ratio": 0.0,
+		"min_direction_count": 1,
+	}
 
 
 static func _targeting_metrics(
@@ -289,7 +327,8 @@ static func _result(
 	generation_metrics: Dictionary,
 	dependency_analysis: Dictionary,
 	targeting_metrics: Dictionary,
-	error: String
+	error: String,
+	shape_metrics: Dictionary = {}
 ) -> Dictionary:
 	return {
 		"arrows": arrows,
@@ -297,5 +336,6 @@ static func _result(
 		"generation_metrics": generation_metrics,
 		"dependency_analysis": dependency_analysis,
 		"dependency_targeting_metrics": targeting_metrics,
+		"shape_metrics": shape_metrics,
 		"error": error,
 	}

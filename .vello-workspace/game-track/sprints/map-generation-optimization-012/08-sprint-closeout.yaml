@@ -1,0 +1,46 @@
+sprint_id: map-generation-optimization-012
+closed_at: 2026-08-17
+status: completed
+delivered:
+  - "MAP-GEN-ACCEPTANCE-012: STAGE-007~010의 밸런스·결정성·다양성·10초 생성 제한을 누적 필수 계약으로 고정"
+  - "MAP-GEN-SHAPE-BALANCE-012: 스프레드시트와 JSON에서 공간 분산·긴 화살·굴곡 목표를 스테이지별로 조절"
+  - "외곽 거리 우선 배치를 제거하고 중앙을 포함한 전체 보드에 긴 굴곡 화살을 균등 분산"
+  - "STAGE-007~010 자동 검증과 사용자 시각 확인 통과"
+not_delivered: []
+carry_forward:
+  required_next_actions: []
+  blockers: []
+  decisions_needed: []
+  deferred_items: []
+  risks:
+    - "Code.gs의 schema v3 변경은 실제 Google Sheets Apps Script 배포본에 별도로 반영해야 한다."
+change_events:
+  - "MAP-GEN-ACCEPTANCE-012: user_accepted"
+  - "MAP-GEN-SHAPE-BALANCE-012: verified"
+sot_delta:
+  applied:
+    - MAP-GEN-ACCEPTANCE-012
+    - MAP-GEN-SHAPE-BALANCE-012
+  discarded: []
+  deferred: []
+sot_updates:
+  project_state:
+    - ../../project-state.yaml
+    - ../../sprint-index.yaml
+    - phase-progress.yaml
+    - sprint.yaml
+  current_design:
+    - ../../current-design/current-design.yaml
+  entity_ledger: []
+learning:
+  - id: MAP-GEN-LEARNING-012
+    outcome: verification_case_added
+    update_refs: [../../current-design/current-design.yaml]
+    evidence: [tests/test_large_stage_generation.gd, tests/test_shape_balance_tuning.gd, "2026-08-17 사용자 시각 확인"]
+    disposition: applied
+refs:
+  - sot-delta.yaml
+  - 05-implementation-handoff.md
+  - 04-implementation-plan-handoff.md
+  - 03-system-spec-handoff.md
+  - ../../current-design/current-design.yaml

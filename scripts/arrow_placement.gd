@@ -146,20 +146,13 @@ static func _generate_dense_solvable_board(
 			grid_size,
 			blocked_set,
 			target_occupied_cells,
-			random
+			random,
+			construction_target
 		)
 		if remaining_cells.size() != target_occupied_cells:
 			continue
 		var arrows: Array = []
 		var placement_failed := false
-		var turn_probability := 0.25
-		if target_empty_ratio < 0.20:
-			var size_factor := clampf(
-				(float(maxi(grid_size.x, grid_size.y)) - 36.0) / 24.0,
-				0.0,
-				1.0
-			)
-			turn_probability = lerpf(0.15, 0.06, size_factor)
 		for arrow_index: int in arrow_count:
 			var remaining_primary_count := arrow_count - arrow_index - 1
 			var placement_max_length: int = mini(
@@ -177,7 +170,7 @@ static func _generate_dense_solvable_board(
 				remaining_cells,
 				random,
 				"primary",
-				turn_probability
+				construction_target
 			)
 			if primary_data.is_empty():
 				placement_failed = true
@@ -197,7 +190,7 @@ static func _generate_dense_solvable_board(
 				remaining_cells,
 				random,
 				"filler",
-				turn_probability
+				construction_target
 			)
 			if filler_data.is_empty():
 				placement_failed = true
@@ -245,32 +238,103 @@ static func _select_dense_occupied_cells(
 	grid_size: Vector2i,
 	blocked_cells: Dictionary,
 	target_occupied_cells: int,
-	random: RandomNumberGenerator
+	random: RandomNumberGenerator,
+	construction_target: Dictionary
 ) -> Dictionary:
-	var ranked_cells: Array[Dictionary] = []
+	if blocked_cells.is_empty():
+		return _select_shifted_row_cells(
+			grid_size,
+			target_occupied_cells,
+			random,
+			construction_target
+		)
+	var bin_count := maxi(2, int(construction_target.get("distribution_grid_size", 4)))
+	var cells_by_bin: Dictionary = {}
+	var playable_cell_count := 0
 	for y: int in range(1, grid_size.y + 1):
 		for x: int in range(1, grid_size.x + 1):
 			var cell := Vector2i(x, y)
 			if not blocked_cells.has(cell):
-				var edge_distance := mini(
-					mini(x - 1, grid_size.x - x),
-					mini(y - 1, grid_size.y - y)
-				)
-				ranked_cells.append({
-					"cell": cell,
-					"score": edge_distance * 4 + random.randi_range(0, 3),
-				})
-	ranked_cells.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
-		if left["score"] != right["score"]:
-			return left["score"] < right["score"]
-		var left_cell: Vector2i = left["cell"]
-		var right_cell: Vector2i = right["cell"]
-		return left_cell.y < right_cell.y \
-				or (left_cell.y == right_cell.y and left_cell.x < right_cell.x)
-	)
+				var bin_x := mini(bin_count - 1, (x - 1) * bin_count / grid_size.x)
+				var bin_y := mini(bin_count - 1, (y - 1) * bin_count / grid_size.y)
+				var bin_index := bin_y * bin_count + bin_x
+				if not cells_by_bin.has(bin_index):
+					cells_by_bin[bin_index] = []
+				cells_by_bin[bin_index].append(cell)
+				playable_cell_count += 1
+	var bin_indexes: Array = cells_by_bin.keys()
+	bin_indexes.sort()
+	var selected_counts: Dictionary = {}
+	var selected_total := 0
+	for bin_index: int in bin_indexes:
+		var bin_cells: Array = cells_by_bin[bin_index]
+		_shuffle_cells(bin_cells, random)
+		var selected_count := floori(
+			float(target_occupied_cells * bin_cells.size()) / float(maxi(playable_cell_count, 1))
+		)
+		selected_counts[bin_index] = selected_count
+		selected_total += selected_count
+	var remainder := target_occupied_cells - selected_total
+	while remainder > 0:
+		var added_in_pass := false
+		for bin_index: int in bin_indexes:
+			if int(selected_counts[bin_index]) >= cells_by_bin[bin_index].size():
+				continue
+			selected_counts[bin_index] = int(selected_counts[bin_index]) + 1
+			remainder -= 1
+			added_in_pass = true
+			if remainder == 0:
+				break
+		if not added_in_pass:
+			break
 	var selected_cells: Dictionary = {}
-	for index: int in mini(target_occupied_cells, ranked_cells.size()):
-		selected_cells[ranked_cells[index]["cell"]] = true
+	for bin_index: int in bin_indexes:
+		var bin_cells: Array = cells_by_bin[bin_index]
+		for cell_index: int in int(selected_counts[bin_index]):
+			selected_cells[bin_cells[cell_index]] = true
+	return selected_cells
+
+
+static func _select_shifted_row_cells(
+	grid_size: Vector2i,
+	target_occupied_cells: int,
+	random: RandomNumberGenerator,
+	construction_target: Dictionary
+) -> Dictionary:
+	var selected_cells: Dictionary = {}
+	var row_base_count := target_occupied_cells / grid_size.y
+	var remainder := target_occupied_cells % grid_size.y
+	var row_indexes: Array[int] = []
+	for row_index: int in grid_size.y:
+		row_indexes.append(row_index)
+	for index: int in range(row_indexes.size() - 1, 0, -1):
+		var swap_index := random.randi_range(0, index)
+		var temporary := row_indexes[index]
+		row_indexes[index] = row_indexes[swap_index]
+		row_indexes[swap_index] = temporary
+	var extra_rows: Dictionary = {}
+	for index: int in remainder:
+		extra_rows[row_indexes[index]] = true
+	var bin_count := maxi(2, int(construction_target.get("distribution_grid_size", 4)))
+	var shift_step := maxi(1, grid_size.x / maxi(bin_count * 2, 1) - 1)
+	var base_offset := random.randi_range(0, grid_size.x - 1)
+	for row_index: int in grid_size.y:
+		var row_count := row_base_count + int(extra_rows.has(row_index))
+		var row_offset := (base_offset + row_index * shift_step) % grid_size.x
+		var empty_count := grid_size.x - row_count
+		var empty_cells: Dictionary = {}
+		if empty_count > 0:
+			var gap_count := mini(bin_count, empty_count)
+			var gap_base_size := empty_count / gap_count
+			var gap_remainder := empty_count % gap_count
+			for gap_index: int in gap_count:
+				var gap_size := gap_base_size + int(gap_index < gap_remainder)
+				var gap_start := (row_offset + gap_index * grid_size.x / gap_count) % grid_size.x
+				for gap_offset: int in gap_size:
+					empty_cells[(gap_start + gap_offset) % grid_size.x] = true
+		for x_index: int in grid_size.x:
+			if not empty_cells.has(x_index):
+				selected_cells[Vector2i(x_index + 1, row_index + 1)] = true
 	return selected_cells
 
 
@@ -282,7 +346,7 @@ static func _peel_dense_arrow(
 	remaining_cells: Dictionary,
 	random: RandomNumberGenerator,
 	placement_role: String,
-	turn_probability: float
+	construction_target: Dictionary
 ) -> Dictionary:
 	var candidates := _dense_peel_candidates(remaining_cells, grid_size, random)
 	if candidates.is_empty():
@@ -293,7 +357,18 @@ static func _peel_dense_arrow(
 		var direction: String = candidate["direction"]
 		var length := random.randi_range(min_length, max_length)
 		if placement_role == "filler" and max_length >= 2:
-			length = maxi(1, max_length - attempt / maxi(candidates.size() / 3, 1))
+			var candidate_attempt_count := mini(MAX_ARROW_ATTEMPTS, candidates.size())
+			length = maxi(
+				1,
+				max_length - attempt * max_length / maxi(candidate_attempt_count, 1)
+			)
+		var required_turns := 0
+		if length >= int(construction_target.get("complex_arrow_min_length", 999999)) \
+				and random.randf() < minf(1.0, float(construction_target.get("min_complex_arrow_ratio", 0.0)) + 0.20):
+			required_turns = int(construction_target.get("complex_arrow_min_turns", 2))
+		elif length >= int(construction_target.get("bent_arrow_min_length", 999999)) \
+				and random.randf() < minf(1.0, float(construction_target.get("min_bent_arrow_ratio", 0.0)) + 0.20):
+			required_turns = 1
 		var cells := _build_body_from_remaining_avoiding_exit(
 			head_cell,
 			length,
@@ -301,7 +376,7 @@ static func _peel_dense_arrow(
 			random,
 			direction,
 			grid_size,
-			turn_probability
+			required_turns
 		)
 		if cells.size() != length:
 			continue
@@ -381,9 +456,6 @@ static func _dense_peel_candidates(
 		var temporary := candidates[index]
 		candidates[index] = candidates[swap_index]
 		candidates[swap_index] = temporary
-	candidates.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
-		return left["edge_distance"] < right["edge_distance"]
-	)
 	return candidates
 
 
@@ -394,15 +466,18 @@ static func _build_body_from_remaining_avoiding_exit(
 	random: RandomNumberGenerator,
 	direction: String,
 	grid_size: Vector2i,
-	turn_probability: float
+	required_turns: int
 ) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = [head_cell]
 	var body_cells := {head_cell: true}
 	var exit_step: Vector2i = PATH_RULE.DIRECTION_VECTORS[direction]
+	var previous_step := Vector2i.ZERO
+	var turn_count := 0
 	while cells.size() < length:
 		var candidates: Array[Vector2i] = []
 		var inward_candidates: Array[Vector2i] = []
 		var turn_candidates: Array[Vector2i] = []
+		var straight_candidates: Array[Vector2i] = []
 		for step: Vector2i in STEP_VECTORS:
 			var candidate: Vector2i = cells.back() + step
 			if not remaining_cells.has(candidate) or body_cells.has(candidate):
@@ -416,42 +491,40 @@ static func _build_body_from_remaining_avoiding_exit(
 				candidates.append(candidate)
 				if step == -exit_step:
 					inward_candidates.append(candidate)
-				elif step != exit_step:
+				if previous_step != Vector2i.ZERO and step != previous_step:
 					turn_candidates.append(candidate)
+				elif previous_step != Vector2i.ZERO and step == previous_step:
+					straight_candidates.append(candidate)
 		if candidates.is_empty():
 			return []
 		var preferred_candidates := candidates
-		if cells.size() == 2 and length == 3 \
-				and not turn_candidates.is_empty() \
-				and random.randf() < turn_probability:
-			var best_turn_distance := -1
-			var best_turn_candidates: Array[Vector2i] = []
-			for turn_candidate: Vector2i in turn_candidates:
-				var turn_distance := mini(
-					mini(turn_candidate.x - 1, grid_size.x - turn_candidate.x),
-					mini(turn_candidate.y - 1, grid_size.y - turn_candidate.y)
-				)
-				if turn_distance > best_turn_distance:
-					best_turn_distance = turn_distance
-					best_turn_candidates.clear()
-					best_turn_candidates.append(turn_candidate)
-				elif turn_distance == best_turn_distance:
-					best_turn_candidates.append(turn_candidate)
-			preferred_candidates = best_turn_candidates
-		elif not inward_candidates.is_empty():
+		var remaining_steps := length - cells.size()
+		var missing_turns := required_turns - turn_count
+		if missing_turns > 0 and not turn_candidates.is_empty() \
+				and (remaining_steps <= missing_turns * 2 or random.randf() < 0.65):
+			preferred_candidates = turn_candidates
+		elif previous_step == Vector2i.ZERO and not inward_candidates.is_empty():
 			preferred_candidates = inward_candidates
+		elif not straight_candidates.is_empty() and random.randf() < 0.55:
+			preferred_candidates = straight_candidates
 		var next_cell: Vector2i = preferred_candidates[
 			random.randi_range(0, preferred_candidates.size() - 1)
 		]
+		var selected_step: Vector2i = next_cell - cells.back()
+		if previous_step != Vector2i.ZERO and selected_step != previous_step:
+			turn_count += 1
+		previous_step = selected_step
 		cells.append(next_cell)
 		body_cells[next_cell] = true
+	if turn_count < required_turns:
+		return []
 	return cells
 
 
-static func _shuffle_cells(cells: Array[Vector2i], random: RandomNumberGenerator) -> void:
+static func _shuffle_cells(cells: Array, random: RandomNumberGenerator) -> void:
 	for index: int in range(cells.size() - 1, 0, -1):
 		var swap_index := random.randi_range(0, index)
-		var temporary := cells[index]
+		var temporary: Variant = cells[index]
 		cells[index] = cells[swap_index]
 		cells[swap_index] = temporary
 

@@ -2,24 +2,58 @@ extends SceneTree
 
 const STAGE_CATALOG := preload("res://scripts/stage_catalog.gd")
 const DEPENDENCY_TARGETING := preload("res://scripts/dependency_targeting.gd")
+const GENERATION_QUALITY := preload("res://scripts/generation_quality.gd")
 
 const CASE_IDS := ["STAGE-007", "STAGE-008", "STAGE-009", "STAGE-010"]
 const MAX_GENERATION_MSEC := 10000
+const ACCEPTANCE_PATH := "res://tests/requirements/map_generation_acceptance.json"
 
 var _failures := PackedStringArray()
 
 
 func _init() -> void:
+	_test_acceptance_contract()
 	var snapshot_result := STAGE_CATALOG.reload_snapshot()
 	_expect(snapshot_result["is_valid"], "Balance snapshot loads")
 	if snapshot_result["is_valid"]:
-		for stage_id: String in CASE_IDS:
+		var case_ids := CASE_IDS
+		var selected_stage := OS.get_environment("PICKUP_ARROW_TEST_STAGE")
+		if not selected_stage.is_empty():
+			case_ids = [selected_stage]
+		for stage_id: String in case_ids:
 			_test_large_stage(stage_id)
 	_finish()
 
 
+func _test_acceptance_contract() -> void:
+	var file := FileAccess.open(ACCEPTANCE_PATH, FileAccess.READ)
+	_expect(file != null, "Map generation acceptance contract exists")
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	_expect(parsed is Dictionary, "Map generation acceptance contract is valid JSON")
+	if not (parsed is Dictionary):
+		return
+	_expect(parsed.get("schema_version") == 1, "Map generation acceptance schema is supported")
+	_expect(parsed.get("default_scope") == CASE_IDS, "Map generation acceptance scope stays explicit")
+	var requirement_ids: Dictionary = {}
+	for requirement: Variant in parsed.get("requirements", []):
+		if requirement is Dictionary and requirement.get("id") is String:
+			requirement_ids[requirement["id"]] = true
+	for required_id: String in [
+		"MG-FUNC-001", "MG-FUNC-002", "MG-FUNC-003", "MG-DIFF-001",
+		"MG-SEED-001", "MG-MODE-001", "MG-MODE-002", "MG-SPACE-001",
+		"MG-SPACE-002", "MG-LENGTH-001", "MG-SHAPE-001", "MG-SHAPE-002",
+		"MG-SHAPE-003", "MG-PERF-001", "MG-VISUAL-001",
+	]:
+		_expect(requirement_ids.has(required_id), "Acceptance contract requires %s" % required_id)
+
+
 func _test_large_stage(stage_id: String) -> void:
 	var profile: Dictionary = STAGE_CATALOG.get_stage_profile(stage_id)
+	var attempt_override := OS.get_environment("PICKUP_ARROW_TEST_ATTEMPTS")
+	if attempt_override.is_valid_int():
+		profile["max_candidate_attempts"] = int(attempt_override)
 	var first_started_msec := Time.get_ticks_msec()
 	var first: Dictionary = STAGE_CATALOG.build_stage_from_profile(
 		profile,
@@ -63,25 +97,23 @@ func _test_large_stage(stage_id: String) -> void:
 		STAGE_CATALOG.validate_stage(first)["is_valid"],
 		"%s validates through StageCatalog" % stage_id
 	)
-	var shape_metrics := _shape_metrics(first["arrows"], first["grid_size"])
-	_expect(
-		shape_metrics["bent_ratio"] >= 0.06,
-		"%s keeps at least six percent bent multi-cell arrows" % stage_id
+	var shape_metrics: Dictionary = GENERATION_QUALITY.measure(
+		first["arrows"], first["grid_size"], first["blocked_cells"], profile["shape_target"]
 	)
 	_expect(
-		shape_metrics["strip_construction_count"] == 0,
+		shape_metrics["matches_target"],
+		"%s satisfies every configured shape target: %s" % [stage_id, shape_metrics["violations"]]
+	)
+	_expect(
+		_strip_construction_count(first["arrows"]) == 0,
 		"%s does not use exterior strip construction" % stage_id
 	)
 	_expect(
-		shape_metrics["head_bins"] >= 8,
-		"%s distributes arrow heads across the board" % stage_id
-	)
-	_expect(
-		shape_metrics["direction_count"] >= 3,
-		"%s keeps varied arrow directions" % stage_id
+		shape_metrics["direction_count"] >= profile["shape_target"]["min_direction_count"],
+		"%s keeps its configured direction count" % stage_id
 	)
 	print(
-		"%s first=%dms second=%dms arrows=%d depth=%d initial=%.4f bent=%.3f bins=%d"
+		"%s first=%dms second=%dms arrows=%d depth=%d initial=%.4f center=%.3f bin=%.3f long=%.3f bent=%.3f complex=%.3f"
 		% [
 			stage_id,
 			first_elapsed_msec,
@@ -89,42 +121,21 @@ func _test_large_stage(stage_id: String) -> void:
 			first["arrows"].size(),
 			first["dependency_analysis"]["dependency_depth"],
 			first["dependency_analysis"]["initial_extractable_ratio"],
-			shape_metrics["bent_ratio"],
-			shape_metrics["head_bins"],
+			shape_metrics["center_occupancy_ratio"],
+			shape_metrics["minimum_bin_occupancy_ratio"],
+			shape_metrics["long_cell_ratio"],
+			shape_metrics["bent_arrow_ratio"],
+			shape_metrics["complex_arrow_ratio"],
 		]
 	)
 
 
-func _shape_metrics(arrows: Array, grid_size: Vector2i) -> Dictionary:
-	var bent_count := 0
-	var multi_cell_count := 0
-	var head_bins: Dictionary = {}
-	var directions: Dictionary = {}
+func _strip_construction_count(arrows: Array) -> int:
 	var strip_construction_count := 0
 	for arrow_data: Dictionary in arrows:
-		directions[arrow_data["direction"]] = true
 		if "strip" in str(arrow_data.get("construction_role", "")):
 			strip_construction_count += 1
-		var head_cell: Vector2i = arrow_data["head_cell"]
-		var bin_x := mini(3, (head_cell.x - 1) * 4 / grid_size.x)
-		var bin_y := mini(3, (head_cell.y - 1) * 4 / grid_size.y)
-		head_bins[Vector2i(bin_x, bin_y)] = true
-		var cells: Array = arrow_data["cells"]
-		if cells.size() < 2:
-			continue
-		multi_cell_count += 1
-		var first_step: Vector2i = cells[1] - cells[0]
-		for cell_index: int in range(2, cells.size()):
-			var next_step: Vector2i = cells[cell_index] - cells[cell_index - 1]
-			if next_step != first_step:
-				bent_count += 1
-				break
-	return {
-		"bent_ratio": float(bent_count) / float(maxi(multi_cell_count, 1)),
-		"head_bins": head_bins.size(),
-		"direction_count": directions.size(),
-		"strip_construction_count": strip_construction_count,
-	}
+	return strip_construction_count
 
 
 func _expect(condition: bool, message: String) -> void:

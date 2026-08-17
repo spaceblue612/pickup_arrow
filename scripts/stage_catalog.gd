@@ -2,10 +2,11 @@ class_name StageCatalog
 extends RefCounted
 
 const DEPENDENCY_TARGETING := preload("res://scripts/dependency_targeting.gd")
+const GENERATION_QUALITY := preload("res://scripts/generation_quality.gd")
 
 const GRID_SIZE := Vector2i(9, 9)
 const SNAPSHOT_PATH := "res://data/stage_balance.json"
-const SUPPORTED_SCHEMA_VERSION := 2
+const SUPPORTED_SCHEMA_VERSION := 3
 const GENERATION_MODES := ["fixed", "random"]
 const CARDINAL_DIRECTIONS := ["UP", "DOWN", "LEFT", "RIGHT"]
 const MIN_ARROW_LENGTH := 1
@@ -120,7 +121,8 @@ static func build_stage_from_profile(
 		config["dependency_target"],
 		config["max_candidate_attempts"],
 		blocked_cells,
-		progress
+		progress,
+		config["shape_target"]
 	)
 	if not generation["error"].is_empty():
 		push_error("Stage generation failed for %s: %s" % [stage_id, generation["error"]])
@@ -138,6 +140,8 @@ static func build_stage_from_profile(
 		"generation_metrics": generation["generation_metrics"],
 		"dependency_analysis": generation["dependency_analysis"],
 		"dependency_target": config["dependency_target"].duplicate(true),
+		"shape_target": config["shape_target"].duplicate(true),
+		"shape_metrics": generation["shape_metrics"],
 		"dependency_targeting_metrics": generation["dependency_targeting_metrics"],
 		"expected_difficulty_level": config["expected_difficulty_level"],
 		"stage_order": config["stage_order"],
@@ -215,7 +219,7 @@ static func _validate_profile(profile: Dictionary) -> String:
 	var required_fields := [
 		"stage_id", "stage_order", "expected_difficulty_level", "grid_size", "seed", "generation_mode",
 		"primary_arrow_count", "min_length", "max_length", "target_empty_ratio",
-		"filler_max_length", "dependency_target", "max_candidate_attempts",
+		"filler_max_length", "shape_target", "dependency_target", "max_candidate_attempts",
 	]
 	for field: String in required_fields:
 		if not profile.has(field):
@@ -251,6 +255,39 @@ static func _validate_profile(profile: Dictionary) -> String:
 		return "max_candidate_attempts must be within 1..256"
 	if not _is_ratio(profile["target_empty_ratio"]):
 		return "target_empty_ratio must be within 0..1"
+	if not (profile["shape_target"] is Dictionary):
+		return "shape_target must be an object"
+	var shape_target: Dictionary = profile["shape_target"]
+	var shape_integer_fields := [
+		"distribution_grid_size", "long_arrow_min_length", "bent_arrow_min_length",
+		"complex_arrow_min_length", "complex_arrow_min_turns", "min_direction_count",
+	]
+	for field: String in shape_integer_fields:
+		if not _is_integer_number(shape_target.get(field)):
+			return "%s must be an integer" % field
+	if shape_target["distribution_grid_size"] < 2 or shape_target["distribution_grid_size"] > 8:
+		return "distribution_grid_size must be within 2..8"
+	if shape_target["min_direction_count"] < 1 or shape_target["min_direction_count"] > 4:
+		return "min_direction_count must be within 1..4"
+	for field: String in ["long_arrow_min_length", "bent_arrow_min_length", "complex_arrow_min_length"]:
+		if shape_target[field] < 1 or shape_target[field] > cell_count:
+			return "%s must be within 1..%d" % [field, cell_count]
+	if shape_target["bent_arrow_min_length"] < 2:
+		return "bent_arrow_min_length must be at least 2"
+	if shape_target["complex_arrow_min_length"] < 3:
+		return "complex_arrow_min_length must be at least 3"
+	if shape_target["complex_arrow_min_turns"] < 2 \
+			or shape_target["complex_arrow_min_turns"] >= shape_target["complex_arrow_min_length"]:
+		return "complex_arrow_min_turns must be within 2..complex_arrow_min_length - 1"
+	for field: String in [
+		"center_region_ratio", "min_center_occupancy_ratio_from_global",
+		"min_bin_occupancy_ratio_from_global", "min_long_cell_ratio",
+		"min_bent_arrow_ratio", "min_complex_arrow_ratio",
+	]:
+		if not _is_ratio(shape_target.get(field)):
+			return "%s must be within 0..1" % field
+	if shape_target["center_region_ratio"] < 0.1:
+		return "center_region_ratio must be at least 0.1"
 	if not (profile["dependency_target"] is Dictionary):
 		return "dependency_target must be an object"
 	var target: Dictionary = profile["dependency_target"]
@@ -277,6 +314,12 @@ static func _normalize_profile(profile_value: Variant) -> Dictionary:
 	var target: Dictionary = profile["dependency_target"]
 	target["min_dependency_depth"] = int(target["min_dependency_depth"])
 	target["max_dependency_depth"] = int(target["max_dependency_depth"])
+	var shape_target: Dictionary = profile["shape_target"]
+	for field: String in [
+		"distribution_grid_size", "long_arrow_min_length", "bent_arrow_min_length",
+		"complex_arrow_min_length", "complex_arrow_min_turns", "min_direction_count",
+	]:
+		shape_target[field] = int(shape_target[field])
 	return profile
 
 
@@ -466,6 +509,19 @@ static func validate_stage(stage_definition: Dictionary) -> Dictionary:
 
 		if not (direction is String) or not CARDINAL_DIRECTIONS.has(direction):
 			errors.append("Arrow %s has a non-cardinal direction" % arrow_id)
+
+	var generation_profile: Variant = stage_definition.get("generation_profile")
+	if generation_profile is Dictionary and generation_profile.get("shape_target") is Dictionary:
+		var shape_metrics: Dictionary = GENERATION_QUALITY.measure(
+			arrows,
+			grid_size,
+			blocked_cells,
+			generation_profile["shape_target"]
+		)
+		if not shape_metrics["matches_target"]:
+			errors.append(
+				"Stage shape target failed: %s" % [", ".join(shape_metrics["violations"])]
+			)
 
 	return _validation_result(errors)
 

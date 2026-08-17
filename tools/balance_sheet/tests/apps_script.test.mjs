@@ -60,24 +60,33 @@ test("Apps Script guide descriptions are Korean and snapshot hash matches the No
 	const nodeSnapshot = normalizeSheetValues(standardSheetValues());
 	const scriptSnapshot = context.paSnapshotFromValidation_({ isValid: true, profiles: nodeSnapshot.profiles });
 	assert.equal(scriptSnapshot.content_hash, nodeSnapshot.content_hash);
-	assert.equal(scriptSnapshot.source_revision, `sheets-v2:${nodeSnapshot.content_hash.slice(0, 12)}`);
+	assert.equal(scriptSnapshot.source_revision, `sheets-v3:${nodeSnapshot.content_hash.slice(0, 12)}`);
 	assert.deepEqual(JSON.parse(JSON.stringify(scriptSnapshot.profiles)), nodeSnapshot.profiles);
 });
 
-test("Apps Script migrates v1 profile values to fixed modes and adds random STAGE-004", () => {
+test("Apps Script migrates legacy profile values and adds shape targets", () => {
 	const { context } = appsScriptContext();
-	const v2 = standardSheetValues().stage_profiles;
-	const v1 = v2.slice(0, 4).map((row) => row.filter((_value, index) => index !== 6));
+	const v3 = standardSheetValues().stage_profiles;
+	const v2Fields = [
+		"stage_id", "stage_order", "expected_difficulty_level", "grid_width", "grid_height",
+		"seed", "generation_mode", "primary_arrow_count", "min_length", "max_length",
+		"target_empty_ratio", "filler_max_length", "min_dependency_depth", "max_dependency_depth",
+		"min_initial_extractable_ratio", "max_initial_extractable_ratio",
+		"min_forced_state_ratio", "max_forced_state_ratio", "max_candidate_attempts", "operator_note",
+	];
+	const indexes = v2Fields.map((field) => v3[0].indexOf(field));
+	const v2 = v3.slice(0, 4).map((row) => indexes.map((index) => row[index]));
+	const v1 = v2.map((row) => row.filter((_value, index) => index !== 6));
 	v1[0].push("legacy_custom");
 	v1[1].push("preserved in hidden backup");
 	const migrated = JSON.parse(JSON.stringify(context.paMigrateV1ProfileValues_(v1)));
 	assert.equal(migrated[0][6], "generation_mode");
-	assert.equal(migrated[0].length, 20);
+	assert.equal(migrated[0].length, 32);
 	assert.equal(migrated.flat().includes("preserved in hidden backup"), false);
 	assert.deepEqual(migrated.slice(1).map((row) => row[6]), ["fixed", "fixed", "fixed", "random"]);
 	assert.deepEqual(migrated.slice(1).map((row) => row[0]), ["STAGE-001", "STAGE-002", "STAGE-003", "STAGE-004"]);
 
-	const partialV2 = v2.slice(0, 4).map((row) => [...row]);
+	const partialV2 = v2.map((row) => [...row]);
 	partialV2[1][6] = "";
 	const recovered = JSON.parse(JSON.stringify(context.paMigrateV1ProfileValues_(partialV2)));
 	assert.deepEqual(recovered.slice(1).map((row) => row[6]), ["fixed", "fixed", "fixed", "random"]);
@@ -87,10 +96,19 @@ test("Apps Script migrates v1 profile values to fixed modes and adds random STAG
 
 test("Apps Script recovers an interrupted v2 table from the newest complete v1 backup", () => {
 	const { context } = appsScriptContext();
-	const v2 = standardSheetValues().stage_profiles;
-	const v1 = v2.slice(0, 4).map((row) => row.filter((_value, index) => index !== 6));
-	const interrupted = v2.slice(0, 4).map((row, rowIndex) => (
-		rowIndex !== 1 ? [...row] : row.map((value, index) => index >= 7 && index <= 18 ? "" : value)
+	const v3 = standardSheetValues().stage_profiles;
+	const v2Fields = [
+		"stage_id", "stage_order", "expected_difficulty_level", "grid_width", "grid_height",
+		"seed", "generation_mode", "primary_arrow_count", "min_length", "max_length",
+		"target_empty_ratio", "filler_max_length", "min_dependency_depth", "max_dependency_depth",
+		"min_initial_extractable_ratio", "max_initial_extractable_ratio",
+		"min_forced_state_ratio", "max_forced_state_ratio", "max_candidate_attempts", "operator_note",
+	];
+	const indexes = v2Fields.map((field) => v3[0].indexOf(field));
+	const v2 = v3.slice(0, 4).map((row) => indexes.map((index) => row[index]));
+	const v1 = v2.map((row) => row.filter((_value, index) => index !== 6));
+	const interrupted = v3.slice(0, 4).map((row, rowIndex) => (
+		rowIndex !== 1 ? [...row] : row.map((value, index) => index >= 12 && index <= 23 ? "" : value)
 	));
 	const partialBackup = interrupted.map((row) => [...row]);
 

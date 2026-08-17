@@ -55,6 +55,24 @@ test("schema rejects unsupported generation modes", () => {
 	assert.throws(() => normalizeSheetValues(values), /generation_mode.*expected one of fixed, random/);
 });
 
+test("schema fails closed for missing or invalid shape balance fields", () => {
+	const missing = standardSheetValues();
+	const distributionIndex = missing[PROFILE_SHEET][0].indexOf("distribution_grid_size");
+	missing[PROFILE_SHEET][1][distributionIndex] = "";
+	assert.throws(() => normalizeSheetValues(missing), /distribution_grid_size.*value is required/);
+
+	const invalid = standardSheetValues();
+	const lengthIndex = invalid[PROFILE_SHEET][0].indexOf("complex_arrow_min_length");
+	const turnsIndex = invalid[PROFILE_SHEET][0].indexOf("complex_arrow_min_turns");
+	invalid[PROFILE_SHEET][1][lengthIndex] = 3;
+	invalid[PROFILE_SHEET][1][turnsIndex] = 3;
+	assert.throws(() => normalizeSheetValues(invalid), /complex_arrow_min_turns.*must be less/);
+
+	const snapshot = normalizeSheetValues(standardSheetValues());
+	delete snapshot.profiles[0].shape_target.min_direction_count;
+	assert.throws(() => validateSnapshot(snapshot), /shape_target.min_direction_count/);
+});
+
 test("column migration supports rename, remove, and add without mutating the source", () => {
 	const source = [["old", "remove"], ["value", "legacy"]];
 	const migrated = applyColumnMigration(source, {

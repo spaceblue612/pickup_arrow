@@ -2,7 +2,7 @@
  * @OnlyCurrentDoc
  */
 
-const PA_SCHEMA_VERSION = 2;
+const PA_SCHEMA_VERSION = 3;
 const PA_PROJECT_ID = 'pickup-arrow';
 const PA_META_SHEET = '_meta';
 const PA_PROFILE_SHEET = 'stage_profiles';
@@ -25,6 +25,18 @@ const PA_FIELDS = [
   { id: 'max_length', type: 'int', required: true, min: 1, group: 'generation', range: 'min_length..playable cell count', description: '기본 화살의 최대 길이' },
   { id: 'target_empty_ratio', type: 'float', required: true, min: 0, max: 1, group: 'generation', range: '0.0..1.0', description: '생성 완료 후 목표 빈 셀 비율' },
   { id: 'filler_max_length', type: 'int', required: true, min: 1, group: 'generation', range: '1..playable cell count', description: '빈 공간을 채우는 보충 화살의 최대 길이' },
+  { id: 'distribution_grid_size', type: 'int', required: true, min: 2, max: 8, group: 'shape', range: '2..8', description: '보드 점유 분산을 측정할 가로·세로 구역 수' },
+  { id: 'center_region_ratio', type: 'float', required: true, min: 0.1, max: 1, group: 'shape', range: '0.1..1.0', description: '중앙 점유율을 측정할 보드 가로·세로 비율' },
+  { id: 'min_center_occupancy_ratio_from_global', type: 'float', required: true, min: 0, max: 1, group: 'shape', range: '0.0..1.0', description: '전체 점유율 대비 중앙 영역 최소 점유 비율' },
+  { id: 'min_bin_occupancy_ratio_from_global', type: 'float', required: true, min: 0, max: 1, group: 'shape', range: '0.0..1.0', description: '전체 점유율 대비 모든 분할 구역의 최소 점유 비율' },
+  { id: 'long_arrow_min_length', type: 'int', required: true, min: 1, group: 'shape', range: '1..playable cell count', description: '긴 화살로 계산할 최소 길이' },
+  { id: 'min_long_cell_ratio', type: 'float', required: true, min: 0, max: 1, group: 'shape', range: '0.0..1.0', description: '전체 점유 셀 중 긴 화살이 차지해야 하는 최소 비율' },
+  { id: 'bent_arrow_min_length', type: 'int', required: true, min: 2, group: 'shape', range: '2..playable cell count', description: '굴곡 화살 비율에 포함할 최소 길이' },
+  { id: 'min_bent_arrow_ratio', type: 'float', required: true, min: 0, max: 1, group: 'shape', range: '0.0..1.0', description: '대상 화살 중 한 번 이상 꺾인 화살의 최소 비율' },
+  { id: 'complex_arrow_min_length', type: 'int', required: true, min: 3, group: 'shape', range: '3..playable cell count', description: '복합 굴곡 화살 비율에 포함할 최소 길이' },
+  { id: 'complex_arrow_min_turns', type: 'int', required: true, min: 2, group: 'shape', range: '2..eligible arrow length - 1', description: '복합 굴곡 화살이 가져야 하는 최소 굴곡 횟수' },
+  { id: 'min_complex_arrow_ratio', type: 'float', required: true, min: 0, max: 1, group: 'shape', range: '0.0..1.0', description: '대상 화살 중 복합 굴곡 화살의 최소 비율' },
+  { id: 'min_direction_count', type: 'int', required: true, min: 1, max: 4, group: 'shape', range: '1..4', description: '생성 결과가 사용해야 하는 최소 화살 진행 방향 수' },
   { id: 'min_dependency_depth', type: 'int', required: true, min: 1, group: 'dependency', range: '>= 1', description: '허용할 최소 의존 단계 깊이' },
   { id: 'max_dependency_depth', type: 'int', required: true, min: 1, group: 'dependency', range: '>= minimum', description: '허용할 최대 의존 단계 깊이' },
   { id: 'min_initial_extractable_ratio', type: 'float', required: true, min: 0, max: 1, group: 'dependency', range: '0.0..1.0', description: '시작 시 바로 제거 가능한 화살 비율의 최솟값' },
@@ -36,7 +48,14 @@ const PA_FIELDS = [
 ];
 
 const PA_PROFILE_COLUMNS = PA_FIELDS.map((field) => field.id);
-const PA_V1_PROFILE_COLUMNS = PA_PROFILE_COLUMNS.filter((field) => field !== 'generation_mode');
+const PA_V2_PROFILE_COLUMNS = [
+  'stage_id', 'stage_order', 'expected_difficulty_level', 'grid_width', 'grid_height',
+  'seed', 'generation_mode', 'primary_arrow_count', 'min_length', 'max_length',
+  'target_empty_ratio', 'filler_max_length', 'min_dependency_depth', 'max_dependency_depth',
+  'min_initial_extractable_ratio', 'max_initial_extractable_ratio',
+  'min_forced_state_ratio', 'max_forced_state_ratio', 'max_candidate_attempts', 'operator_note',
+];
+const PA_V1_PROFILE_COLUMNS = PA_V2_PROFILE_COLUMNS.filter((field) => field !== 'generation_mode');
 const PA_GUIDE_COLUMNS = [
   'metric_id', 'classification', 'group', 'value_type', 'required',
   'allowed_range', 'default_value', 'stage_profiles_column', 'description',
@@ -51,10 +70,10 @@ const PA_META_ROWS = [
 ];
 
 const PA_INITIAL_PROFILES = [
-  ['STAGE-001', 1, '', 9, 9, 1001, 'fixed', 3, 1, 6, 0.70, 3, 2, 4, 0.50, 1.00, 0.00, 0.25, 64, ''],
-  ['STAGE-002', 2, '', 9, 9, 2002, 'fixed', 4, 3, 10, 0.55, 3, 3, 5, 0.30, 0.60, 0.10, 0.40, 64, ''],
-  ['STAGE-003', 3, '', 9, 9, 3003, 'fixed', 5, 5, 14, 0.40, 3, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ''],
-  ['STAGE-004', 4, '', 9, 9, 4004, 'random', 5, 5, 14, 0.40, 3, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ''],
+  ['STAGE-001', 1, '', 9, 9, 1001, 'fixed', 3, 1, 6, 0.70, 3, 3, 0.5, 0, 0, 3, 0, 3, 0, 5, 2, 0, 1, 2, 4, 0.50, 1.00, 0.00, 0.25, 64, ''],
+  ['STAGE-002', 2, '', 9, 9, 2002, 'fixed', 4, 3, 10, 0.55, 3, 3, 0.5, 0, 0, 4, 0, 4, 0, 6, 2, 0, 1, 3, 5, 0.30, 0.60, 0.10, 0.40, 64, ''],
+  ['STAGE-003', 3, '', 9, 9, 3003, 'fixed', 5, 5, 14, 0.40, 3, 3, 0.5, 0, 0, 5, 0, 5, 0, 7, 2, 0, 1, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ''],
+  ['STAGE-004', 4, '', 9, 9, 4004, 'random', 5, 5, 14, 0.40, 3, 3, 0.5, 0, 0, 5, 0, 5, 0, 7, 2, 0, 1, 4, 8, 0.00, 0.40, 0.20, 1.00, 64, ''],
 ];
 
 const PA_OBSERVED_METRICS = [
@@ -73,6 +92,11 @@ const PA_OBSERVED_METRICS = [
   ['attempt_count', 'budget', 'int', '1..max_candidate_attempts', '조건에 맞는 후보를 찾을 때 사용한 시도 횟수'],
   ['selected_seed', 'generation', 'int', '0..2147483647+', '최종 선택된 후보의 결정적 시드'],
   ['has_complete_solution', 'dependency', 'bool', 'true or false', '모든 화살을 제거하는 완전한 해답 존재 여부'],
+  ['center_occupancy_ratio', 'shape', 'float', '0.0..1.0', '설정한 중앙 영역의 실제 점유율'],
+  ['minimum_bin_occupancy_ratio', 'shape', 'float', '0.0..1.0', '설정한 분할 구역 중 가장 낮은 실제 점유율'],
+  ['long_cell_ratio', 'shape', 'float', '0.0..1.0', '전체 점유 셀 중 긴 화살이 차지한 실제 비율'],
+  ['bent_arrow_ratio', 'shape', 'float', '0.0..1.0', '대상 화살 중 한 번 이상 꺾인 화살의 실제 비율'],
+  ['complex_arrow_ratio', 'shape', 'float', '0.0..1.0', '대상 화살 중 설정 횟수 이상 꺾인 화살의 실제 비율'],
 ];
 
 const PA_DEFERRED_METRICS = [
@@ -147,14 +171,14 @@ function pickupArrowMigrateSchema() {
     if (!metaSheet) throw new Error('_meta 탭이 없습니다. 먼저 최초 구성을 실행하세요.');
 
     const currentVersion = Number(metaSheet.getRange('B2').getValue());
-    if (currentVersion === 1) {
+    if (currentVersion === 1 || currentVersion === 2) {
       const migration = paMigrateV1ToV2_(spreadsheet);
       const migrated = paValidateWorkbook_(spreadsheet);
       if (!migrated.isValid) throw new Error(migrated.issues.join('\n'));
       paPublishSnapshot_(paSnapshotFromValidation_(migrated));
       SpreadsheetApp.getUi().alert(
         '구조 마이그레이션 완료',
-        'schema v2와 generation_mode를 적용하고 STAGE-004를 random으로 등록했습니다. 기존 탭'
+        'schema v3와 스테이지별 분산·길이·굴곡 필드를 적용했습니다. 기존 탭'
           + (migration.archivedExtraData ? '과 표준 범위 밖 데이터는' : '은')
           + ' 숨겨진 백업에 보존했습니다.',
         SpreadsheetApp.getUi().ButtonSet.OK,
@@ -184,7 +208,7 @@ function pickupArrowMigrateSchema() {
       SpreadsheetApp.getUi().alert(
         '구조 마이그레이션',
         interruptedMigrationRecovered
-          ? '중단된 마이그레이션을 숨겨진 원본 백업에서 복구하고 schema v2를 적용했습니다.'
+          ? '중단된 마이그레이션을 숨겨진 원본 백업에서 복구하고 schema v3를 적용했습니다.'
           : guideRefreshed
           ? '스키마 버전은 최신이며 metric_guide 설명을 한글로 갱신했습니다. 기존 guide는 숨겨진 백업 탭에 보존했습니다.'
           : '현재 스키마 버전은 ' + currentVersion + '이며 이미 최신입니다. 검증된 동기화 데이터도 갱신했습니다.',
@@ -205,8 +229,11 @@ function paMigrateV1ToV2_(spreadsheet) {
   if (!profileSheet || !guideSheet) throw new Error('stage_profiles와 metric_guide 탭이 필요합니다.');
   const sourceSheet = paFindV1MigrationSource_(spreadsheet, profileSheet);
   const detectedHeader = sourceSheet.getRange(1, 1, 1, PA_PROFILE_COLUMNS.length).getValues()[0];
-  const hasV2Header = PA_PROFILE_COLUMNS.every((field, index) => detectedHeader[index] === field);
-  const sourceColumnCount = hasV2Header ? PA_PROFILE_COLUMNS.length : PA_V1_PROFILE_COLUMNS.length;
+  const hasCurrentHeader = PA_PROFILE_COLUMNS.every((field, index) => detectedHeader[index] === field);
+  const hasV2Header = PA_V2_PROFILE_COLUMNS.every((field, index) => detectedHeader[index] === field);
+  const sourceColumnCount = hasCurrentHeader
+    ? PA_PROFILE_COLUMNS.length
+    : hasV2Header ? PA_V2_PROFILE_COLUMNS.length : PA_V1_PROFILE_COLUMNS.length;
   let archivedExtraData = false;
   if (sourceSheet.getLastColumn() > sourceColumnCount) {
     const extra = sourceSheet.getRange(
@@ -241,8 +268,8 @@ function paMigrateV1ToV2_(spreadsheet) {
   paWriteTable_(guideSheet, [PA_GUIDE_COLUMNS].concat(paGuideRows_()));
   spreadsheet.getSheetByName(PA_META_SHEET).getRange('B2').setValue(PA_SCHEMA_VERSION);
   paApplyProfileRules_(profileSheet);
-  paProtectWithWarning_(profileSheet.getRange(1, 1, 1, PA_PROFILE_COLUMNS.length), 'Pickup Arrow profile header v2');
-  paProtectWithWarning_(guideSheet.getRange(1, 1, paGuideRows_().length + 1, PA_GUIDE_COLUMNS.length), 'Pickup Arrow metric guide v2');
+  paProtectWithWarning_(profileSheet.getRange(1, 1, 1, PA_PROFILE_COLUMNS.length), 'Pickup Arrow profile header v3');
+  paProtectWithWarning_(guideSheet.getRange(1, 1, paGuideRows_().length + 1, PA_GUIDE_COLUMNS.length), 'Pickup Arrow metric guide v3');
   return { archivedExtraData: archivedExtraData, recoveredFromBackup: sourceSheet !== profileSheet };
 }
 
@@ -261,21 +288,30 @@ function paFindV1MigrationSource_(spreadsheet, profileSheet) {
 
 function paReadMigrationTable_(sheet) {
   const header = sheet.getRange(1, 1, 1, PA_PROFILE_COLUMNS.length).getValues()[0];
-  const hasV2Header = PA_PROFILE_COLUMNS.every((field, index) => header[index] === field);
+  const hasCurrentHeader = PA_PROFILE_COLUMNS.every((field, index) => header[index] === field);
+  const hasV2Header = PA_V2_PROFILE_COLUMNS.every((field, index) => header[index] === field);
   const hasV1Header = PA_V1_PROFILE_COLUMNS.every((field, index) => header[index] === field);
-  if (!hasV1Header && !hasV2Header) return null;
-  const columnCount = hasV2Header ? PA_PROFILE_COLUMNS.length : PA_V1_PROFILE_COLUMNS.length;
+  if (!hasV1Header && !hasV2Header && !hasCurrentHeader) return null;
+  const columnCount = hasCurrentHeader
+    ? PA_PROFILE_COLUMNS.length
+    : hasV2Header ? PA_V2_PROFILE_COLUMNS.length : PA_V1_PROFILE_COLUMNS.length;
   return sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), columnCount).getValues();
 }
 
 function paMigrationTableIsRecoverable_(table) {
   if (!Array.isArray(table) || !Array.isArray(table[0])) return false;
-  const hasV2Header = PA_PROFILE_COLUMNS.every((field, index) => table[0][index] === field);
-  const header = hasV2Header ? PA_PROFILE_COLUMNS : PA_V1_PROFILE_COLUMNS;
+  const hasCurrentHeader = PA_PROFILE_COLUMNS.every((field, index) => table[0][index] === field);
+  const hasV2Header = PA_V2_PROFILE_COLUMNS.every((field, index) => table[0][index] === field);
+  const header = hasCurrentHeader
+    ? PA_PROFILE_COLUMNS
+    : hasV2Header ? PA_V2_PROFILE_COLUMNS : PA_V1_PROFILE_COLUMNS;
   if (!header.every((field, index) => table[0][index] === field)) return false;
-  const requiredIndexes = PA_FIELDS
-    .filter((field) => field.required && field.id !== 'generation_mode')
-    .map((field) => header.indexOf(field.id));
+  const requiredFields = hasCurrentHeader
+    ? PA_FIELDS.filter((field) => field.required).map((field) => field.id)
+    : PA_FIELDS.filter((field) => (
+      field.required && field.id !== 'generation_mode' && PA_V1_PROFILE_COLUMNS.includes(field.id)
+    )).map((field) => field.id);
+  const requiredIndexes = requiredFields.map((field) => header.indexOf(field));
   const rows = table.slice(1).filter((row) => !paIsBlankRow_(row));
   return rows.length > 0 && rows.every((row) => requiredIndexes.every((index) => (
     index >= 0 && !paIsBlank_(row[index])
@@ -289,10 +325,9 @@ function paHasInterruptedV1Migration_(spreadsheet) {
   if (!table || !PA_PROFILE_COLUMNS.every((field, index) => table[0][index] === field)) return false;
   const rows = table.slice(1).filter((row) => !paIsBlankRow_(row));
   if (rows.length === 0) return false;
-  const partialRows = rows.filter((row) => (
-    row.slice(0, 7).some((value) => !paIsBlank_(value))
-      && row.slice(7, 19).every((value) => paIsBlank_(value))
-  ));
+  const partialRows = rows.filter((row) => PA_FIELDS.some((field, index) => (
+    field.required && paIsBlank_(row[index])
+  )));
   if (partialRows.length === 0) return false;
   return spreadsheet.getSheets().some((sheet) => (
     /^_backup_\d+_stage_profiles$/.test(sheet.getName())
@@ -312,8 +347,11 @@ function paBackupContainsInterruptedRows_(sheet, partialRows) {
 
 function paMigrateV1ProfileValues_(table) {
   if (!Array.isArray(table) || !Array.isArray(table[0])) throw new Error('stage_profiles 표가 올바르지 않습니다.');
-  const hasV2Header = PA_PROFILE_COLUMNS.every((field, index) => table[0][index] === field);
-  const expectedHeader = hasV2Header ? PA_PROFILE_COLUMNS : PA_V1_PROFILE_COLUMNS;
+  const hasCurrentHeader = PA_PROFILE_COLUMNS.every((field, index) => table[0][index] === field);
+  const hasV2Header = PA_V2_PROFILE_COLUMNS.every((field, index) => table[0][index] === field);
+  const expectedHeader = hasCurrentHeader
+    ? PA_PROFILE_COLUMNS
+    : hasV2Header ? PA_V2_PROFILE_COLUMNS : PA_V1_PROFILE_COLUMNS;
   expectedHeader.forEach((field, index) => {
     if (table[0][index] !== field) throw new Error('stage_profiles 헤더 ' + paColumnName_(index + 1) + '1은 ' + field + '이어야 합니다.');
   });
@@ -321,13 +359,18 @@ function paMigrateV1ProfileValues_(table) {
   const rows = table.slice(1).map((source) => {
     const row = source.slice(0, expectedHeader.length);
     if (paIsBlankRow_(row)) return Array(PA_PROFILE_COLUMNS.length).fill('');
-    if (hasV2Header) {
-      if (paIsBlank_(row[6])) row[6] = 'fixed';
-      if (row[0] === 'STAGE-004') row[6] = 'random';
-    } else {
-      row.splice(6, 0, row[0] === 'STAGE-004' ? 'random' : 'fixed');
+    const values = {};
+    expectedHeader.forEach((field, index) => { values[field] = row[index]; });
+    if (paIsBlank_(values.generation_mode)) values.generation_mode = 'fixed';
+    if (values.stage_id === 'STAGE-004') values.generation_mode = 'random';
+    const defaults = paShapeMigrationDefaults_(values);
+    Object.keys(defaults).forEach((field) => {
+      if (paIsBlank_(values[field])) values[field] = defaults[field];
+    });
+    if (defaults.min_long_cell_ratio > 0 && Number(values.filler_max_length) < Number(values.max_length)) {
+      values.filler_max_length = values.max_length;
     }
-    return row;
+    return PA_PROFILE_COLUMNS.map((field) => values[field] ?? '');
   });
   const stageFour = rows.find((row) => row[0] === 'STAGE-004');
   const orderFour = rows.find((row) => Number(row[1]) === 4);
@@ -335,6 +378,24 @@ function paMigrateV1ProfileValues_(table) {
   if (!stageFour && orderFour) throw new Error('stage_order 4가 이미 사용 중이므로 STAGE-004를 추가할 수 없습니다.');
   if (!stageFour) rows.push(PA_INITIAL_PROFILES[3].slice());
   return [PA_PROFILE_COLUMNS.slice()].concat(rows);
+}
+
+function paShapeMigrationDefaults_(profile) {
+  const isLargeBoard = Number(profile.grid_width) >= 36 && Number(profile.grid_height) >= 36;
+  return {
+    distribution_grid_size: isLargeBoard ? 4 : 3,
+    center_region_ratio: 0.5,
+    min_center_occupancy_ratio_from_global: isLargeBoard ? 0.75 : 0,
+    min_bin_occupancy_ratio_from_global: isLargeBoard ? 0.60 : 0,
+    long_arrow_min_length: Math.max(1, Number(profile.min_length) || 1),
+    min_long_cell_ratio: isLargeBoard ? 0.65 : 0,
+    bent_arrow_min_length: Math.max(2, Number(profile.min_length) || 2),
+    min_bent_arrow_ratio: isLargeBoard ? 0.50 : 0,
+    complex_arrow_min_length: Math.max(3, Math.min(Number(profile.max_length) || 3, (Number(profile.min_length) || 1) + 2)),
+    complex_arrow_min_turns: 2,
+    min_complex_arrow_ratio: isLargeBoard ? 0.25 : 0,
+    min_direction_count: isLargeBoard ? 4 : 1,
+  };
 }
 
 function pickupArrowValidateData() {
@@ -507,7 +568,7 @@ function paValidateWorkbook_(spreadsheet) {
     profiles.push(paToRuntimeProfile_(parsed));
   });
 
-  if (profileCount === 0) issues.push(PA_PROFILE_SHEET + '!A2:T: 스테이지가 하나 이상 필요합니다.');
+  if (profileCount === 0) issues.push(PA_PROFILE_SHEET + '!A2:' + paColumnName_(PA_PROFILE_COLUMNS.length) + ': 스테이지가 하나 이상 필요합니다.');
   paValidateUnexpectedColumns_(profileSheet, issues);
   profiles.sort((left, right) => left.stage_order - right.stage_order || left.stage_id.localeCompare(right.stage_id));
   return { isValid: issues.length === 0, issues: issues, profileCount: profileCount, profiles: profiles };
@@ -519,7 +580,7 @@ function paSnapshotFromValidation_(result) {
   const contentHash = paSha256_(paCanonicalJson_(hashInput));
   return {
     schema_version: PA_SCHEMA_VERSION,
-    source_revision: 'sheets-v2:' + contentHash.slice(0, 12),
+    source_revision: 'sheets-v3:' + contentHash.slice(0, 12),
     content_hash: contentHash,
     profiles: result.profiles,
   };
@@ -594,7 +655,7 @@ function paValidatePublishedSnapshot_(snapshot) {
     profiles: snapshot.profiles,
   }));
   if (snapshot.content_hash !== expectedHash) throw new Error('게시 snapshot content_hash가 일치하지 않습니다.');
-  if (snapshot.source_revision !== 'sheets-v2:' + expectedHash.slice(0, 12)) {
+  if (snapshot.source_revision !== 'sheets-v3:' + expectedHash.slice(0, 12)) {
     throw new Error('게시 snapshot source_revision이 일치하지 않습니다.');
   }
 }
@@ -686,6 +747,9 @@ function paValidateCrossFields_(profile, row, issues) {
     ['min_length', 'I'],
     ['max_length', 'J'],
     ['filler_max_length', 'L'],
+    ['long_arrow_min_length', 'Q'],
+    ['bent_arrow_min_length', 'S'],
+    ['complex_arrow_min_length', 'U'],
   ].forEach((item) => {
     if (Number.isFinite(profile[item[0]]) && Number.isFinite(cellCount) && profile[item[0]] > cellCount) {
       issues.push(address(item[1]) + ': 전체 셀 수 ' + cellCount + '을 넘을 수 없습니다.');
@@ -694,14 +758,19 @@ function paValidateCrossFields_(profile, row, issues) {
 
   [
     ['min_length', 'max_length', 'J'],
-    ['min_dependency_depth', 'max_dependency_depth', 'N'],
-    ['min_initial_extractable_ratio', 'max_initial_extractable_ratio', 'P'],
-    ['min_forced_state_ratio', 'max_forced_state_ratio', 'R'],
+    ['min_dependency_depth', 'max_dependency_depth', 'Z'],
+    ['min_initial_extractable_ratio', 'max_initial_extractable_ratio', 'AB'],
+    ['min_forced_state_ratio', 'max_forced_state_ratio', 'AD'],
   ].forEach((item) => {
     if (Number.isFinite(profile[item[0]]) && Number.isFinite(profile[item[1]]) && profile[item[1]] < profile[item[0]]) {
       issues.push(address(item[2]) + ': ' + item[1] + '은 ' + item[0] + ' 이상이어야 합니다.');
     }
   });
+  if (Number.isFinite(profile.complex_arrow_min_turns)
+      && Number.isFinite(profile.complex_arrow_min_length)
+      && profile.complex_arrow_min_turns >= profile.complex_arrow_min_length) {
+    issues.push(address('V') + ': complex_arrow_min_turns는 complex_arrow_min_length보다 작아야 합니다.');
+  }
 }
 
 function paToRuntimeProfile_(row) {
@@ -717,6 +786,20 @@ function paToRuntimeProfile_(row) {
     max_length: row.max_length,
     target_empty_ratio: row.target_empty_ratio,
     filler_max_length: row.filler_max_length,
+    shape_target: {
+      distribution_grid_size: row.distribution_grid_size,
+      center_region_ratio: row.center_region_ratio,
+      min_center_occupancy_ratio_from_global: row.min_center_occupancy_ratio_from_global,
+      min_bin_occupancy_ratio_from_global: row.min_bin_occupancy_ratio_from_global,
+      long_arrow_min_length: row.long_arrow_min_length,
+      min_long_cell_ratio: row.min_long_cell_ratio,
+      bent_arrow_min_length: row.bent_arrow_min_length,
+      min_bent_arrow_ratio: row.min_bent_arrow_ratio,
+      complex_arrow_min_length: row.complex_arrow_min_length,
+      complex_arrow_min_turns: row.complex_arrow_min_turns,
+      min_complex_arrow_ratio: row.min_complex_arrow_ratio,
+      min_direction_count: row.min_direction_count,
+    },
     dependency_target: {
       min_dependency_depth: row.min_dependency_depth,
       max_dependency_depth: row.max_dependency_depth,
