@@ -99,3 +99,9 @@ entities:
   - id: FEATURE-BOARD-ZOOM-008
     type: feature
     status: active
+  - id: FEATURE-STAGE-SELECT-009
+    type: feature
+    status: active
+  - id: FEATURE-HOME-SUMMARY-LOADING-010
+    type: feature
+    status: active

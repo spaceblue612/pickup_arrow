@@ -1,5 +1,5 @@
 project_id: pickup-arrow
-status: ready
-current_sprint: ""
-current_sprint_status: completed
-next_action: select_next_scope
+status: active
+current_sprint: map-generation-cancel-011
+current_sprint_status: needs_user_check
+next_action: user_check

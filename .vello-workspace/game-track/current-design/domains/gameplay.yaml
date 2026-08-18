@@ -1,0 +1,81 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: gameplay
+items:
+  GAMEPLAY-GRID-001:
+    kind: policy
+    scope: all-stages
+    parent_refs: [CORE-001]
+    content:
+      sizing: "각 스테이지는 양의 정수 width와 height로 고정된 유한한 직사각 격자를 사용한다."
+      runtime_expansion: false
+      size_policy: "99x99는 대표 대형 보드 검증 대상이고 한 변 999는 조건부 처리 대상이며 99999는 지원 목표가 아니다."
+      resource_guard: "한 변은 최대 999, width x height는 최대 10000이며 초과 입력은 데이터 생성 전에 거절한다."
+      unsafe_input_policy: "지원 자원 한도를 넘는 스테이지는 축소하지 않고 로드 또는 생성 전에 명시적으로 거절한다."
+  CORE-ARROW-RULES-001:
+    kind: policy
+    scope: all-stages
+    parent_refs: [CORE-001]
+    content:
+      directions: [UP, DOWN, LEFT, RIGHT]
+      arrow_shape: "화살은 화살촉 칸부터 이어지는 스테이지별 길이 범위의 중복 없는 상하좌우 연결 몸통 칸으로 구성되며 꺾일 수 있다."
+      extraction: "화살촉은 지정 방향의 직선 경로로 이동하고 각 후위 몸통은 선행 몸통이 지나간 경로를 같은 속도로 따라가며, 마지막 몸통이 화면 밖으로 나간 뒤 제거된다."
+      path_collision: "화살촉 진행 1라인에 다른 화살 또는 자기 몸통이 있으면 이동할 수 없고, 라인 밖의 몸통은 차단하지 않는다."
+      extraction_speed_pixels_per_second: 1600.0
+      blocked_selection: "막힌 선택은 보드 상태를 유지하고 막힘 피드백을 표시한다."
+      clear_condition: "남은 화살이 없으면 보드가 완료된다."
+  GAMEPLAY-PROGRESSION-001:
+    kind: policy
+    scope: registered-stages
+    parent_refs: [CORE-001]
+    statement: "검증된 로컬 밸런스 스냅샷의 stage_order 순서로 진행하고 마지막 등록 스테이지 완료 후 prototype-complete 상태가 된다."
+  CORE-BOARD-MASK-006:
+    kind: policy
+    scope: masked-boards
+    parent_refs: [CORE-001]
+    content:
+      default: "마스크가 없으면 width x height의 모든 셀이 배치 가능하다."
+      blocked_cell: "화살 생성과 수동 배치를 금지하고 화면에서 비활성 영역으로 표시한다."
+      extraction: "배치 불가 셀은 충돌체나 보드 경계가 아니며 화살은 해당 셀을 통과해 직사각 보드 외곽으로 추출된다."
+      validity: "마스크 범위 밖 좌표, 중복 좌표, 배치 가능 셀이 없는 보드, 배치 불가 셀을 점유한 화살은 거절한다."
+  FEATURE-BOARD-ZOOM-008:
+    kind: policy
+    scope: board-and-preview
+    parent_refs: [CORE-001]
+    content:
+      play_area: "현재 UI 기준 좌우 화면 전체, y=150부터 하단 90px 제외 지점까지의 최대 직사각 영역을 보드 clip과 입력 영역으로 사용한다."
+      default_scale: "가로 약 9칸이 보이는 셀 크기로 시작하고 넓어진 세로 공간에는 추가 행을 표시한다."
+      zoom:
+        range: [0.25, 2.0]
+        touch: "두 손가락 pinch 중점을 기준으로 확대·축소한다."
+        desktop: "mouse wheel cursor 위치를 기준으로 확대·축소한다."
+        focus_policy: "zoom 전후 focus 아래의 보드 좌표를 화면상 같은 위치에 유지한 뒤 보드 외곽으로 clamp한다."
+      pan: "기존 이동거리 임계값으로 tap과 drag를 구분하며 zoom 상태에서도 넘치는 축만 이동한다."
+      preview: "read-only preview는 pan·zoom을 허용하고 화살 선택·추출만 막는다."
+      clipping: "격자와 화살 몸통·연결부·화살촉을 모두 play_area 경계에서 절단한다."
+  FEATURE-MAP-GENERATION-WAIT-008:
+    kind: policy
+    scope: random-generation-flow
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      states: [home, generating, playing, generation_error]
+      loading: "random 맵 생성 중 입력을 잠그고 경과 시간을 나타내는 0~10초 게이지와 생성 중 상태를 표시한다."
+      timeout_seconds: 10
+      failure: "생성 실패나 제한시간 도달 시 부분 결과를 폐기하고 홈에 문제 메시지와 실패 스테이지 재시도를 표시한다."
+      retry: "재시도는 실패한 random 스테이지에 새 runtime seed로 진입한다."
+      late_result_policy: "취소되거나 만료된 생성 요청의 늦은 결과는 보드 상태에 적용하지 않는다."
+  FEATURE-STAGE-SELECT-009:
+    kind: policy
+    scope: home-stage-selection
+    parent_refs: [CORE-001, FEATURE-MAP-GENERATION-MODE-008]
+    content:
+      home_title: "STAGE LIST"
+      entries: "홈 화면은 넓은 스크롤 영역에 등록된 모든 스테이지를 stage_order 순서의 선택 버튼으로 표시한다. 각 버튼은 잠금 조건 없이 해당 스테이지를 즉시 시작한다."
+      scroll: "목록 콘텐츠가 영역 높이를 넘으면 터치 드래그와 마우스 휠로 세로 스크롤하며, 드래그 중에는 스테이지를 시작하지 않는다."
+      card_metrics: "각 카드는 한국어 짧은 문구로 크기, 목표 빈칸 비율, 실제 빈칸 비율과 시작 시 제거 가능 화살 비율을 표시한다. 제목에는 생성 방식 고정 또는 랜덤을 함께 표시한다."
+      generation: "fixed와 random 스테이지 모두 같은 목록에서 선택하며 random은 기존 비동기 생성 흐름을 사용한다."
+      summary_loading:
+        startup: "홈 화면은 즉시 표시하고 스테이지 카드의 생성 요약은 백그라운드에서 등록 순서대로 준비한다."
+        progress: "요약 준비 중에는 완료 수와 전체 수를 프로그레스 바로 표시하며, 준비된 카드부터 실제 빈칸 비율과 초기 제거 가능 비율을 표시한다."
+        interaction: "요약이 준비되지 않은 스테이지를 선택해도 별도 비동기 맵 생성 흐름으로 진입해 화면을 멈추지 않는다."

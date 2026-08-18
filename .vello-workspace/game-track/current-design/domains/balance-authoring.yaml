@@ -1,0 +1,86 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: balance-authoring
+items:
+  BALANCE-METRIC-CATALOG-007:
+    kind: configuration
+    scope: balance-authoring
+    parent_refs: [GAME-DATA-INVARIANT-001]
+    content:
+      expected_difficulty_level:
+        type: int
+        range: [1, 100]
+        required: false
+        blank_policy: "미보정으로 표시하고 생성 조건에는 사용하지 않는다."
+        role: "운영자가 지정하는 예상 난이도 표식이며 자동 난이도 점수를 대체하지 않는다."
+      configurable_fields:
+        identity: [stage_id, stage_order, operator_note]
+        board: [grid_width, grid_height]
+        generation: [generation_mode, seed, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length]
+        shape: [distribution_grid_size, center_region_ratio, min_center_occupancy_ratio_from_global, min_bin_occupancy_ratio_from_global, long_arrow_min_length, min_long_cell_ratio, bent_arrow_min_length, min_bent_arrow_ratio, complex_arrow_min_length, complex_arrow_min_turns, min_complex_arrow_ratio, min_direction_count]
+        dependency: [min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio]
+        budget: [max_candidate_attempts]
+      constraints:
+        unique: [stage_id, stage_order]
+        grid_side_range: [1, 999]
+        grid_cell_limit: 10000
+        ratio_range: [0.0, 1.0]
+        max_candidate_attempts_range: [1, 256]
+        literal_values_only: true
+      observed_metrics:
+        - node_count
+        - filler_arrow_count
+        - occupied_cell_count
+        - actual_empty_ratio
+        - edge_count
+        - dependency_depth
+        - initial_extractable_count
+        - initial_extractable_ratio
+        - forced_state_count
+        - forced_state_ratio
+        - average_choice_count
+        - choice_counts
+        - attempt_count
+        - selected_seed
+        - has_complete_solution
+        - center_occupancy_ratio_from_global
+        - min_bin_occupancy_ratio_from_global
+        - long_cell_ratio
+        - bent_arrow_ratio
+        - complex_arrow_ratio
+        - direction_count
+      deferred_metrics:
+        - "새 후보 채택 조건"
+        - "고급 의존 지표"
+        - "플레이 제약 지표"
+  FEATURE-GOOGLE-SHEETS-AUTHORING-007:
+    kind: policy
+    scope: balance-authoring-workflow
+    parent_refs: [GAME-DATA-INVARIANT-001]
+    content:
+      canonical_source: "Google Sheets의 stage_profiles 탭"
+      schema_version: 3
+      tabs:
+        _meta:
+          columns: [key, value, description]
+          edit_policy: warning_protected
+        stage_profiles:
+          columns: [stage_id, stage_order, expected_difficulty_level, grid_width, grid_height, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, min_dependency_depth, max_dependency_depth, min_initial_extractable_ratio, max_initial_extractable_ratio, min_forced_state_ratio, max_forced_state_ratio, max_candidate_attempts, distribution_grid_size, center_region_ratio, min_center_occupancy_ratio_from_global, min_bin_occupancy_ratio_from_global, long_arrow_min_length, min_long_cell_ratio, bent_arrow_min_length, min_bent_arrow_ratio, complex_arrow_min_length, complex_arrow_min_turns, min_complex_arrow_ratio, min_direction_count, operator_note]
+          data_start_row: 2
+          edit_policy: "헤더는 보호 경고, 운영 데이터는 편집 가능"
+        metric_guide:
+          columns: [metric_id, classification, group, value_type, required, allowed_range, default_value, stage_profiles_column, description]
+          classifications: [configurable, observed, deferred]
+          description_language: ko
+          edit_policy: warning_protected
+      migration: "v1·v2 profile을 보존하고 형상 목표 열을 추가해 v3로 검증·게시한다."
+      row_policy: "완전한 빈 행만 무시하고 부분 행·수식·임의 표준 열·중복 stage_id 또는 stage_order·지원하지 않는 generation_mode는 전체 게시를 거절한다."
+      stage_registry: "유효한 stage profile은 stage_order 순서로 등록하고 generation_mode에 따라 고정 또는 플레이별 생성한다."
+      operator_flow:
+        - "Apps Script 구조 마이그레이션으로 v3 형상 목표 열을 적용한다."
+        - "stage_profiles를 편집하고 데이터 검증으로 마지막 정상 JSON 게시본을 갱신한다."
+        - "로컬 Sync & Preview로 재검증·스냅샷 교체·스테이지 미리보기를 수행한다."
+        - "검토한 data/stage_balance.json을 포함해 게임을 다시 빌드·배포한다."
+      runtime_policy: "게임 런타임은 원격 시트나 웹 앱에 접속하지 않고 버전 관리된 로컬 스냅샷만 읽는다."
+      exclusions: [manual_csv_import, runtime_direct_google_access, preview_writeback_to_sheet, authored_fixed_arrow_layout]

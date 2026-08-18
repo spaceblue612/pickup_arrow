@@ -1,50 +1,86 @@
+schema_version: 2
 sprints:
-  - id: arrow-puzzle-prototype-001
-    status: completed
-    closed_at: 2026-07-24
-    closeout: sprints/arrow-puzzle-prototype-001/08-sprint-closeout.yaml
-  - id: bent-arrow-generation-002
-    status: completed
-    started_at: 2026-07-26
-    closed_at: 2026-07-26
-    closeout: sprints/bent-arrow-generation-002/08-sprint-closeout.yaml
-  - id: arrow-balance-motion-003
-    status: completed
-    started_at: 2026-07-26
-    closed_at: 2026-07-26
-    closeout: sprints/arrow-balance-motion-003/08-sprint-closeout.yaml
-  - id: dependency-difficulty-004
-    status: completed
-    started_at: 2026-07-26
-    closed_at: 2026-07-27
-    closeout: sprints/dependency-difficulty-004/08-sprint-closeout.yaml
-  - id: dependency-targeting-005
-    status: completed
-    started_at: 2026-07-27
-    closed_at: 2026-08-02
-    closeout: sprints/dependency-targeting-005/08-sprint-closeout.yaml
-  - id: board-foundation-006
-    status: completed
-    started_at: 2026-08-02
-    closed_at: 2026-08-02
-    closeout: sprints/board-foundation-006/08-sprint-closeout.yaml
-  - id: balance-authoring-007
-    status: completed
-    started_at: 2026-08-02
-    closed_at: 2026-08-03
-    closeout: sprints/balance-authoring-007/08-sprint-closeout.yaml
-  - id: map-generation-mode-008
-    status: completed
-    started_at: 2026-08-03
-    closed_at: 2026-08-03
-    closeout: sprints/map-generation-mode-008/08-sprint-closeout.yaml
-  - id: stage-select-009
-    status: delivery_complete
-    started_at: 2026-08-10
-  - id: map-generation-optimization-012
-    status: completed
-    workflow_status: completed
-    started_at: 2026-08-11
-    closed_at: 2026-08-17
+  arrow-puzzle-prototype-001:
+    delivery_status: delivery_complete
     closeout_status: completed
-    closeout: sprints/map-generation-optimization-012/08-sprint-closeout.yaml
+    base_sot_revision: 0
+    closed_at: "2026-07-24"
+    closeout_ref: sprints/arrow-puzzle-prototype-001/08-sprint-closeout.yaml
+  bent-arrow-generation-002:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-07-26"
+    closed_at: "2026-07-26"
+    closeout_ref: sprints/bent-arrow-generation-002/08-sprint-closeout.yaml
+  arrow-balance-motion-003:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-07-26"
+    closed_at: "2026-07-26"
+    closeout_ref: sprints/arrow-balance-motion-003/08-sprint-closeout.yaml
+  dependency-difficulty-004:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-07-26"
+    closed_at: "2026-07-27"
+    closeout_ref: sprints/dependency-difficulty-004/08-sprint-closeout.yaml
+  dependency-targeting-005:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-07-27"
+    closed_at: "2026-08-02"
+    closeout_ref: sprints/dependency-targeting-005/08-sprint-closeout.yaml
+  board-foundation-006:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-08-02"
+    closed_at: "2026-08-02"
+    closeout_ref: sprints/board-foundation-006/08-sprint-closeout.yaml
+  balance-authoring-007:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-08-02"
+    closed_at: "2026-08-03"
+    closeout_ref: sprints/balance-authoring-007/08-sprint-closeout.yaml
+  map-generation-mode-008:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 0
+    started_at: "2026-08-03"
+    closed_at: "2026-08-03"
+    closeout_ref: sprints/map-generation-mode-008/08-sprint-closeout.yaml
+  stage-select-009:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 1
+    started_at: "2026-08-10"
+    closed_at: "2026-08-17"
+    closeout_ref: sprints/stage-select-009/08-sprint-closeout.yaml
+  home-summary-loading-010:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    base_sot_revision: 2
+    started_at: "2026-08-10"
+    closed_at: "2026-08-17"
+    closeout_ref: sprints/home-summary-loading-010/08-sprint-closeout.yaml
+  map-generation-cancel-011:
+    delivery_status: delivery_complete
+    closeout_status: open
+    workflow_status: needs_user_check
+    base_sot_revision: 3
+    started_at: "2026-08-10"
+    closeout_ref: ""
+  map-generation-optimization-012:
+    delivery_status: delivery_complete
+    closeout_status: completed
+    workflow_status: completed
+    base_sot_revision: 3
+    started_at: "2026-08-11"
+    closed_at: "2026-08-17"
+    closeout_ref: sprints/map-generation-optimization-012/08-sprint-closeout.yaml

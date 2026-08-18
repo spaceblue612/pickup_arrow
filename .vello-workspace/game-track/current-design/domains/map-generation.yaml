@@ -1,0 +1,83 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: map-generation
+items:
+  FEATURE-MAP-GENERATION-MODE-008:
+    kind: policy
+    scope: supported-profiles
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      profile_field: generation_mode
+      values: [fixed, random]
+      fixed: "확정 seed로 동일한 맵을 재현하며 preview에서만 다른 candidate seed를 반복 탐색한다."
+      random: "새 플레이마다 runtime seed에서 후보 탐색을 시작하고 snapshot의 base seed는 변경하지 않는다."
+      hard_validity: [resource_limit, non_overlapping_cells, complete_solution, no_deadlock]
+      difficulty_policy: "dependency 목표와 profile의 공간 분산·길이·굴곡 목표를 모두 통과한 후보만 채택한다."
+  MAP-GEN-ACCEPTANCE-012:
+    kind: policy
+    scope: [STAGE-007, STAGE-008, STAGE-009, STAGE-010]
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      canonical_file: tests/requirements/map_generation_acceptance.json
+      performance_limit_msec: 10000
+      required: ["비중복과 완전한 풀이", "profile 점유율과 의존성 목표", "중앙·구역별 균등 분산", "긴 화살 셀 비율", "1회 이상·2회 이상 굴곡 비율", "같은 seed 결정성", "random seed 다양성"]
+      visual_acceptance: "외곽 편중과 중앙 공동 없이 긴 굴곡 화살이 보드 전체에 조화롭게 얽혀야 한다."
+      governance: "생성 편의나 성능을 위해 profile 목표를 완화하거나 기존 필수 요구사항을 삭제하지 않는다."
+  BALANCE-GENERATION-PROFILE-003:
+    kind: configuration
+    scope: stage-profiles
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      length_ranges:
+        STAGE-001: [1, 6]
+        STAGE-002: [3, 10]
+        STAGE-003: [5, 14]
+      target_empty_ratios:
+        STAGE-001: 0.70
+        STAGE-002: 0.55
+        STAGE-003: 0.40
+      filler_max_length: 3
+  MAP-GENERATION-VALIDITY-001:
+    kind: policy
+    scope: supported-profiles
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      deterministic_seed: true
+      validity: "몸통이 겹치지 않고 자기 몸통이 화살촉 진행선을 막지 않으며 모든 화살을 제거할 수 있는 해결 순서가 존재해야 한다."
+      metrics: "목표·실제 빈칸 비율, 기본·보충 화살 수, 의존 분석, 공간 분산, 긴 화살과 굴곡 비율을 생성 스테이지에서 제공한다."
+  BALANCE-DEPENDENCY-TARGETING-005:
+    kind: policy
+    scope: generated-stages
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      candidate_seed_step: 1000003
+      max_candidate_attempts: 64
+      construction: "설정한 dependency depth 범위의 backbone을 먼저 구성하고 나머지 화살을 역순 제거 가능한 구조로 배치해 완전한 풀이를 보장한다."
+      scored_targets: [dependency_depth, initial_extractable_ratio]
+      observed_only: [forced_state_ratio, average_choice_count]
+      selection: "완전한 풀이 순서가 검증된 후보 중에서만 범위 충족 수와 범위까지의 거리가 가장 좋은 후보를 선택하고 동률이면 앞선 seed를 사용한다."
+      fallback: "목표 범위를 모두 만족하지 못해도 closest-valid 후보를 채택하고 실제 지표와 목표 미달 상태를 표시한다."
+      failure: "완전한 풀이 순서가 검증된 후보가 하나도 없으면 맵을 로드하지 않고 기존 board를 유지한 채 실패한다."
+      stage_targets:
+        STAGE-001:
+          dependency_depth: [2, 4]
+          initial_extractable_ratio: [0.50, 1.00]
+          forced_state_ratio: [0.00, 0.25]
+        STAGE-002:
+          dependency_depth: [3, 5]
+          initial_extractable_ratio: [0.30, 0.60]
+          forced_state_ratio: [0.10, 0.40]
+        STAGE-003:
+          dependency_depth: [4, 8]
+          initial_extractable_ratio: [0.00, 0.40]
+          forced_state_ratio: [0.20, 1.00]
+  MAP-BOARD-SPACE-001:
+    kind: policy
+    scope: generated-boards
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      capacity_basis: "보드 용량, 목표 빈칸 비율, 배치 가능 여부는 width x height 전체가 아니라 마스크의 배치 가능 셀을 기준으로 계산한다."
+      placement: "화살촉과 모든 몸통 셀은 배치 가능 셀 안에 있어야 하며 몸통 연결도 배치 가능 인접 셀만 사용한다."
+      path_analysis: "해결 가능성 및 차단 분석은 스테이지별 직사각 grid_size를 사용하고 배치 불가 셀은 경로 판정에서 무시한다."
+      determinism: "동일한 스테이지 크기, 정규화 마스크, seed, 생성 프로필은 동일한 생성 결과를 만든다."

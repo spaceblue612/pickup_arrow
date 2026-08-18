@@ -1,0 +1,125 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: systems
+items:
+  SYS-ACTIVE-REGISTRY-001:
+    kind: configuration
+    scope: runtime-systems
+    parent_refs: [CORE-001]
+    content:
+      active:
+        - SYS-STAGE-CATALOG
+        - SYS-PATH-RULE
+        - SYS-BOARD-STATE
+        - SYS-TOUCH-FEEDBACK
+        - SYS-ARROW-PLACEMENT
+        - SYS-DEPENDENCY-ANALYZER
+        - SYS-DEPENDENCY-TARGETING
+        - SYS-BOARD-VIEWPORT
+        - SYS-BALANCE-SHEET-LIFECYCLE
+        - SYS-BALANCE-SYNC
+        - SYS-STAGE-BALANCE-PREVIEW
+        - SYS-MAP-GENERATION-CONTROLLER
+  SYS-DEPENDENCY-TARGETING:
+    kind: policy
+    scope: generated-stages
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      responsibility: "완전한 풀이와 profile의 공간 분산·길이·굴곡 조건을 통과한 후보만 대상으로 dependency 목표에 가장 가까운 후보를 선택한다."
+      input: [base_seed, placement_profile, dependency_target, shape_target, max_candidate_attempts]
+      output: [arrows, solution_order, generation_metrics, shape_metrics, dependency_analysis, dependency_targeting_metrics, error]
+      candidate_seed: "base_seed + candidate_index * 1000003"
+  SYS-STAGE-CATALOG:
+    kind: policy
+    scope: registered-stages
+    parent_refs: [GAME-GENERATION-INVARIANT-001, GAME-DATA-INVARIANT-001]
+    content:
+      dependency_targeting_output:
+        fields: [dependency_target, dependency_targeting_metrics, dependency_analysis]
+        behavior: "선택된 후보의 생성·분석 결과를 재분석 없이 스테이지 정의에 연결한다."
+      board_definition:
+        source_fields: [grid_size, mask_rows]
+        runtime_fields: [grid_size, blocked_cells]
+        mask_symbols: {playable: ".", blocked: "#"}
+        behavior: "스테이지별 크기와 도트 마스크를 검증하고 배치 불가 좌표를 행 우선 순서로 정규화해 생성기와 런타임 보드 상태에 전달한다."
+        error_policy: "잘못되거나 자원 한도를 넘는 정의는 기본값으로 대체하지 않고 오류로 거절한다."
+      balance_profile:
+        source: "SYS-BALANCE-SYNC가 생성한 data/stage_balance.json"
+        key: stage_id
+        loading: "schema_version 3, content_hash와 전체 profile을 검증하고 stage_order 순서의 immutable index를 구성한다."
+        fields: [stage_order, expected_difficulty_level, grid_size, seed, generation_mode, primary_arrow_count, min_length, max_length, target_empty_ratio, filler_max_length, dependency_target, shape_target, max_candidate_attempts]
+        seed_policy: "fixed는 profile seed를 그대로 사용하고 random은 생성 controller가 제공한 runtime seed를 사용한다."
+        composition: "같은 stage_id의 별도 보드 콘텐츠가 있으면 결합하고 없으면 전체 직사각 보드로 생성한다."
+        error_policy: "스냅샷 누락·버전 불일치·잘못된 profile 또는 mode는 하드코딩 기본값으로 대체하지 않는다."
+  SYS-BOARD-VIEWPORT:
+    kind: policy
+    scope: board-and-preview
+    parent_refs: [CORE-001]
+    content:
+      responsibility: "스테이지별 보드를 UI 제외 최대 영역에 표시하고 pan·focus zoom·전체 보드 geometry clipping·터치 선택 판정을 일관되게 관리한다."
+      input: [grid_size, blocked_cells, viewport_size, pointer_events, pinch_events, wheel_events, board_phase]
+      output: [board_transform, visible_cell_bounds, pan_offset, zoom_scale, clipped_geometry, tap_selection_request]
+  SYS-BALANCE-SHEET-LIFECYCLE:
+    kind: policy
+    scope: balance-authoring-workflow
+    parent_refs: [GAME-DATA-INVARIANT-001]
+    content:
+      responsibility: "Google Sheets 바인드 Apps Script가 최초 구성, 구조 마이그레이션과 데이터 검증을 수행한다."
+      execution_boundary: "현재 시트 편집자의 현재 문서 권한으로 실행하며 서비스 계정·JSON 키·Google Cloud Console을 사용하지 않는다."
+      menu: [최초 구성, 구조 마이그레이션, 데이터 검증]
+      setup: "빈 시트에 세 표준 탭과 fixed STAGE-001~003, random STAGE-004, 입력 검증과 보호 경고를 생성한다."
+      migration: "지원되는 v1·v2 구조를 백업·복구한 뒤 generation_mode와 형상 목표를 포함한 schema_version 3으로 변환한다."
+      validation: "필수 탭·헤더·리터럴·타입·범위·교차 필드·중복을 검사하고 셀 위치가 포함된 오류를 반환한다."
+      failure_policy: "부분 구성을 완료로 표시하지 않고 기존 지원 구조와 복구 가능한 백업을 보존한다."
+  SYS-BALANCE-SYNC:
+    kind: policy
+    scope: balance-publication
+    parent_refs: [GAME-DATA-INVARIANT-001]
+    content:
+      responsibility: "Apps Script가 마지막 정상 밸런스 JSON을 읽기 전용으로 게시하고 로컬 도구가 재검증해 런타임 스냅샷을 저장한다."
+      publication:
+        trigger: "시트 메뉴의 데이터 검증 성공"
+        storage: "ScriptProperties Base64 chunk와 manifest"
+        payload_limit: 450000
+        failure_policy: "게시 실패 시 이전 정상 게시본을 복구한다."
+      endpoint:
+        method: GET
+        access: anonymous
+        execute_as: deployer
+        output: [schema_version, source_revision, content_hash, profiles]
+        excludes: [sheet_url, spreadsheet_id, operator_note, credentials, write_action]
+      local_sync:
+        input: [PICKUP_ARROW_SHEETS_URL]
+        validation: "schema_version, 전체 profile, 정렬과 canonical SHA-256 content_hash를 다시 검증한다."
+        atomicity: "검증된 임시 파일 기록이 끝난 뒤 data/stage_balance.json을 교체한다."
+      runtime_access: false
+      failure_policy: "네트워크·HTTP·JSON·스키마·값 실패 시 마지막 정상 로컬 스냅샷을 유지한다."
+  SYS-STAGE-BALANCE-PREVIEW:
+    kind: policy
+    scope: balance-preview
+    parent_refs: [GAME-DATA-INVARIANT-001, GAME-GENERATION-INVARIANT-001]
+    content:
+      responsibility: "동기화된 로컬 스냅샷으로 실제 생성 경로를 실행해 선택 스테이지의 보드와 설정·실측 난이도를 표시한다."
+      entry: "개발·운영용 balance_preview.tscn"
+      actions: [sync, select_stage, regenerate_fixed_candidate, regenerate_random, toggle_metrics]
+      displays: [snapshot_revision, content_hash, configured_metrics, observed_metrics, expected_difficulty_level, validation_error]
+      edit_policy: read_only
+      consistency: "게임 런타임과 같은 StageCatalog와 로컬 스냅샷을 사용한다."
+      failure_policy: "Sync 실패 시 마지막 정상 보드와 오류를 유지한다."
+      generation_mode_behavior:
+        displays: [generation_mode, base_seed, candidate_seed, runtime_seed, generation_elapsed_seconds, target_match, observed_metrics]
+        regenerate_fixed: "다음 candidate seed로 다른 배열을 생성하며 snapshot과 Sheets를 자동 변경하지 않는다."
+        adopt_fixed: "표시된 candidate seed를 운영자가 Sheets seed 열에 반영한 뒤 검증·sync한다."
+        regenerate_random: "새 runtime seed에서 closest-valid 후보 탐색을 다시 실행한다."
+      layout: "실측 지표는 기본 접힘 상태이며 필요할 때 토글하고 나머지 영역을 보드에 사용한다."
+  SYS-MAP-GENERATION-CONTROLLER:
+    kind: policy
+    scope: random-generation-flow
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      responsibility: "stage profile의 generation_mode에 따라 결정적 또는 플레이별 seed로 비동기 맵 생성을 실행하고 진행·완료·실패·시간초과를 관리한다."
+      input: [stage_id, generation_mode, base_seed, generation_profile, request_id]
+      output: [progress, runtime_seed, stage_definition, failure, timeout]
+      timeout_seconds: 10
+      concurrency: "한 번에 하나의 활성 요청만 보드에 적용하며 취소·교체된 request_id의 결과는 폐기한다."

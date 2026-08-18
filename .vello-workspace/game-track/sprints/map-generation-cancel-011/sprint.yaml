@@ -1,0 +1,9 @@
+sprint_id: map-generation-cancel-011
+track: game
+route: direct_execution
+status: needs_user_check
+started_at: 2026-08-10
+title: "맵 생성 제한 해제와 취소"
+scope_authorization: confirmed
+scope:
+  - FEATURE-MAP-GENERATION-CANCEL-011

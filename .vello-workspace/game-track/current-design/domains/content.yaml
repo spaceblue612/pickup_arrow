@@ -1,0 +1,13 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: content
+items:
+  CONTENT-RANDOM-STAGE-004-008:
+    kind: configuration
+    scope: registered-stages
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      stages: [STAGE-001, STAGE-002, STAGE-003, STAGE-004]
+      stage_registry: "STAGE-001~003은 fixed이고 STAGE-004는 실제 random profile이다."
+      generation: "모든 stage는 hard validity와 profile의 의존성·분산·길이·굴곡 목표를 통과해야 하며 STAGE-007~010은 10초 안에 생성되어야 한다."

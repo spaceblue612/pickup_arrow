@@ -1,0 +1,30 @@
+schema_version: 2
+sprint_id: home-summary-loading-010
+base_sot:
+  revision: 2
+  manifest_digest: "sha256:e20128e83a1b34e98a61f58ebfd5834d2141f6327f79224a9b2b6337be65be8f"
+updated_at: "2026-08-17"
+updates:
+  - id: SOT-010-HOME-SUMMARY-LOADING
+    document_ref: domains.gameplay
+    target_id: FEATURE-STAGE-SELECT-009
+    operation: patch_item
+    change_class: domain_change
+    expected_item_digest: "sha256:03c9b9eabc1cef06712681d0873b7ebf5fcfca0cabc88f7bd77b92c39aaf51f5"
+    protected_refs: [CORE-001, FEATURE-MAP-GENERATION-WAIT-008]
+    affected_refs: [FEATURE-STAGE-SELECT-009]
+    patch:
+      - op: add
+        path: /content/summary_loading
+        value:
+          startup: "홈 화면은 즉시 표시하고 스테이지 카드의 생성 요약은 백그라운드에서 등록 순서대로 준비한다."
+          progress: "요약 준비 중에는 완료 수와 전체 수를 프로그레스 바로 표시하며, 준비된 카드부터 실제 빈칸 비율과 초기 제거 가능 비율을 표시한다."
+          interaction: "요약이 준비되지 않은 스테이지를 선택해도 별도 비동기 맵 생성 흐름으로 진입해 화면을 멈추지 않는다."
+    content: {}
+    authorization_ref: ""
+    status: user_accepted
+    verification_mode: embedded
+    evidence: [05-implementation-handoff.md, tests/test_home_stage_summary_loader.gd, tests/test_map_generation_controller.gd]
+    replaces: []
+    closeout_disposition: apply
+unresolved: []

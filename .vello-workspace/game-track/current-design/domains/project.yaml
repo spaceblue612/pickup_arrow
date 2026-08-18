@@ -1,0 +1,14 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: project
+items:
+  PROJECT-TECHNOLOGY-001:
+    kind: configuration
+    scope: project
+    parent_refs: [CORE-001]
+    content:
+      platform: mobile_touch
+      technology:
+        engine: Godot 4.7
+        language: GDScript

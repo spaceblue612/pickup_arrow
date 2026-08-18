@@ -1,0 +1,74 @@
+schema_version: 2
+sprint_id: map-generation-cancel-011
+base_sot:
+  revision: 3
+  manifest_digest: "sha256:e90762c7b2084e376a8ac539d68a96d244330915d14e5c6f651c245283fa99b3"
+updated_at: "2026-08-17"
+updates:
+  - id: SOT-011-MAP-GENERATION-CANCEL
+    document_ref: domains.gameplay
+    target_id: FEATURE-MAP-GENERATION-WAIT-008
+    operation: patch_item
+    change_class: domain_change
+    expected_item_digest: "sha256:def964d21bfbc8ef10d80d8cf1e155e2cf2801993e3db08b3cc20ae73c7fb4c8"
+    protected_refs: [CORE-001, GAME-GENERATION-INVARIANT-001, FEATURE-MAP-GENERATION-MODE-008, FEATURE-STAGE-SELECT-009]
+    affected_refs: [FEATURE-MAP-GENERATION-WAIT-008]
+    patch:
+      - op: replace
+        path: /content/loading
+        value: "맵 생성은 완료될 때까지 입력을 잠그고 현재 생성 후보 수와 설정된 후보 목표 수의 진행 표시, 경과 시간을 보인다."
+      - op: replace
+        path: /content/timeout_seconds
+        value: null
+      - op: add
+        path: /content/cancellation
+        value: "생성 화면의 취소 버튼은 활성 요청 결과를 폐기하고 홈으로 돌아간다."
+      - op: replace
+        path: /content/failure
+        value: "생성 실패만 홈의 문제 메시지와 재시도로 처리한다."
+    content: {}
+    authorization_ref: 04-implementation-plan-handoff.md
+    status: implemented
+    verification_mode: user_check
+    evidence: [05-implementation-handoff.md, tests/test_map_generation_controller.gd]
+    replaces: []
+    closeout_disposition: ""
+  - id: SOT-011-MAP-GENERATION-CONTROLLER-TIMEOUT
+    document_ref: domains.systems
+    target_id: SYS-MAP-GENERATION-CONTROLLER
+    operation: patch_item
+    change_class: domain_change
+    expected_item_digest: "sha256:b80d1f3883aeff53c08f4d976665670388a375f761ec513b8f75d6e7062f8cb1"
+    protected_refs: [CORE-001, GAME-GENERATION-INVARIANT-001, SYS-STAGE-CATALOG]
+    affected_refs: [SYS-MAP-GENERATION-CONTROLLER]
+    patch:
+      - op: replace
+        path: /content/timeout_seconds
+        value: null
+    content: {}
+    authorization_ref: 04-implementation-plan-handoff.md
+    status: verified
+    verification_mode: embedded
+    evidence: [05-implementation-handoff.md, tests/test_map_generation_controller.gd]
+    replaces: []
+    closeout_disposition: ""
+  - id: SOT-011-RANDOM-GENERATION-NO-TIME-LIMIT
+    document_ref: domains.content
+    target_id: CONTENT-RANDOM-STAGE-004-008
+    operation: patch_item
+    change_class: domain_change
+    expected_item_digest: "sha256:d786d86755f20c7cea6761d819bfdcbbe5ddc30d7574bd8c64e003fdfae53743"
+    protected_refs: [GAME-GENERATION-INVARIANT-001, FEATURE-MAP-GENERATION-MODE-008]
+    affected_refs: [CONTENT-RANDOM-STAGE-004-008]
+    patch:
+      - op: replace
+        path: /content/generation
+        value: "모든 stage는 hard validity를 통과해야 하며 random은 목표 지표 미달 시에도 closest-valid 후보로 플레이를 시작한다."
+    content: {}
+    authorization_ref: 04-implementation-plan-handoff.md
+    status: verified
+    verification_mode: embedded
+    evidence: [05-implementation-handoff.md, tests/test_map_generation_controller.gd]
+    replaces: []
+    closeout_disposition: ""
+unresolved: []

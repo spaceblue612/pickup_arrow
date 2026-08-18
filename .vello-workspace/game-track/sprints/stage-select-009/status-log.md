@@ -7,3 +7,7 @@
 - revision: stage card metrics requested; `EG-STAGE-SELECT-009` resumed.
 - implementation: `EG-STAGE-SELECT-009` card metrics completed; embedded verification passed.
 - revision: stage title generation mode label completed; embedded verification passed.
+
+## 2026-08-17
+
+- closeout: SOT-009-STAGE-SELECT applied to current-design revision 2; sprint completed.

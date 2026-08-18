@@ -1,0 +1,19 @@
+schema_version: 2
+document_type: domain
+scope_id: game
+domain_id: dependency-analysis
+items:
+  ADVANCED-DEPENDENCY-DIFFICULTY-004:
+    kind: policy
+    scope: generated-stages
+    parent_refs: [GAME-GENERATION-INVARIANT-001]
+    content:
+      graph_direction: "blocker → blocked"
+      deterministic_simulation: "남은 배열 순서에서 첫 추출 가능 화살을 제거한다."
+      metrics:
+        - dependency_depth
+        - initial_extractable_ratio
+        - forced_state_ratio
+        - average_choice_count
+        - has_complete_solution
+      application: "완전한 풀이와 무교착은 필수 조건이며 dependency depth와 초기 추출 가능 비율은 후보 점수, 강제 진행 비율과 평균 선택 수는 관찰값으로 사용한다."

@@ -1,0 +1,7 @@
+route: direct_execution
+scope_authorization: confirmed
+groups:
+  - id: EG-MAP-GENERATION-CANCEL-011
+    status: completed
+next_action: user_check
+sprint_status: needs_user_check

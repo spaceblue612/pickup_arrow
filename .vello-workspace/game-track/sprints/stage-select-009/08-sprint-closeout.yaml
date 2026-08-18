@@ -1,0 +1,36 @@
+sprint_id: stage-select-009
+closed_at: "2026-08-17"
+status: completed
+delivered:
+  - "FEATURE-STAGE-SELECT-009: 등록 스테이지 목록, 카드 지표와 fixed·random 진입"
+not_delivered: []
+carry_forward:
+  required_next_actions: []
+  blockers: []
+  decisions_needed: []
+  deferred_items:
+    - "스테이지 잠금·진행도 표시"
+  risks: []
+change_events:
+  - "FEATURE-STAGE-SELECT-009: active"
+sot_delta:
+  applied: [SOT-009-STAGE-SELECT]
+  discarded: []
+  deferred: []
+sot_updates:
+  project_state: []
+  current_design:
+    - ../../current-design/current-design.yaml
+    - ../../current-design/domains/gameplay.yaml
+  entity_ledger:
+    - ../../entity-ledger.yaml
+learning:
+  - id: LEARN-009-STAGE-SELECTION
+    outcome: configuration_changed
+    update_refs: [SOT-009-STAGE-SELECT]
+    evidence: [05-implementation-handoff.md, tests/test_map_generation_controller.gd]
+    disposition: apply
+refs:
+  - sot-delta.yaml
+  - 05-implementation-handoff.md
+  - ../../current-design/current-design.yaml

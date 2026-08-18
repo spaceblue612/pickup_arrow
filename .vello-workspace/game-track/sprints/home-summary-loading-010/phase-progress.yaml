@@ -1,0 +1,7 @@
+route: direct_execution
+scope_authorization: confirmed
+groups:
+  - id: EG-HOME-SUMMARY-LOADING-010
+    status: completed
+next_action: closed
+sprint_status: completed

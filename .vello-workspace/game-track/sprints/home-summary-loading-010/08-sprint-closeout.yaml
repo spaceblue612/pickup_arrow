@@ -1,0 +1,35 @@
+sprint_id: home-summary-loading-010
+closed_at: "2026-08-17"
+status: completed
+delivered:
+  - "SOT-010-HOME-SUMMARY-LOADING: 홈 선표시, 순차 비동기 요약 준비와 진행 표시"
+not_delivered: []
+carry_forward:
+  required_next_actions: []
+  blockers: []
+  decisions_needed: []
+  deferred_items: []
+  risks: []
+change_events:
+  - "SOT-010-HOME-SUMMARY-LOADING: active"
+sot_delta:
+  applied: [SOT-010-HOME-SUMMARY-LOADING]
+  discarded: []
+  deferred: []
+sot_updates:
+  project_state: []
+  current_design:
+    - ../../current-design/current-design.yaml
+    - ../../current-design/domains/gameplay.yaml
+  entity_ledger:
+    - ../../entity-ledger.yaml
+learning:
+  - id: LEARN-010-HOME-SUMMARY
+    outcome: configuration_changed
+    update_refs: [SOT-010-HOME-SUMMARY-LOADING]
+    evidence: [05-implementation-handoff.md, tests/test_home_stage_summary_loader.gd]
+    disposition: apply
+refs:
+  - sot-delta.yaml
+  - 05-implementation-handoff.md
+  - ../../current-design/current-design.yaml

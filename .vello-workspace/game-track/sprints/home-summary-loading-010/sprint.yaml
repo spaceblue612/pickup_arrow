@@ -1,0 +1,9 @@
+sprint_id: home-summary-loading-010
+track: game
+route: direct_execution
+status: completed
+started_at: 2026-08-10
+title: "홈 스테이지 요약 비동기 로딩"
+scope_authorization: confirmed
+scope:
+  - FEATURE-HOME-SUMMARY-LOADING-010

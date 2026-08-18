@@ -3,5 +3,5 @@ scope_authorization: confirmed
 groups:
   - id: EG-STAGE-SELECT-009
     status: completed
-next_action: delivery_complete
-sprint_status: delivery_complete
+next_action: closed
+sprint_status: completed
