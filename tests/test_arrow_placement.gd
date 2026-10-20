@@ -10,6 +10,7 @@ var _failures := PackedStringArray()
 func _init() -> void:
 	_test_length_twenty()
 	_test_level_length_above_twenty()
+	_test_arrowhead_stays_straight()
 	_test_deterministic_solvable_board()
 	_test_target_empty_ratio_with_fillers()
 	_test_filler_heavy_large_board()
@@ -38,6 +39,27 @@ func _test_level_length_above_twenty() -> void:
 	_expect(result["error"].is_empty(), "A stage level can request a length above 20")
 	if result["arrows"].size() == 1:
 		_expect(result["arrows"][0]["cells"].size() == 24, "Level length range is applied")
+
+
+func _test_arrowhead_stays_straight() -> void:
+	var result: Dictionary = ARROW_PLACEMENT.generate(20261019, Vector2i(9, 9), 4, 3, 8)
+	_expect(result["error"].is_empty(), "Arrowhead straightness test board generates")
+	if not result["error"].is_empty():
+		return
+	var direction_vectors := {
+		"UP": Vector2i.UP,
+		"DOWN": Vector2i.DOWN,
+		"LEFT": Vector2i.LEFT,
+		"RIGHT": Vector2i.RIGHT,
+	}
+	for arrow_data: Dictionary in result["arrows"]:
+		var cells: Array = arrow_data["cells"]
+		if cells.size() < 2:
+			continue
+		_expect(
+			cells[1] == cells[0] - direction_vectors[arrow_data["direction"]],
+			"Arrow body remains straight at the arrowhead before any turn"
+		)
 
 
 func _test_deterministic_solvable_board() -> void:

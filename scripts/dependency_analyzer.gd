@@ -23,10 +23,10 @@ static func analyze(arrows: Array, grid_size: Vector2i) -> Dictionary:
 		dependents_by_arrow[arrow_id] = PackedStringArray()
 
 	var edge_count := 0
-	var arrows_by_cell := _arrows_by_cell(arrows)
+	var arrows_by_cell := PATH_RULE.index_cells(arrows)
 	for arrow_id: String in arrow_ids:
 		var selected_arrow: Dictionary = arrows_by_id[arrow_id]
-		for blocker_id: String in _blocking_arrow_ids(selected_arrow, arrows_by_cell, grid_size):
+		for blocker_id: String in PATH_RULE.blocking_arrow_ids(selected_arrow, arrows_by_cell, grid_size):
 			if not dependents_by_arrow.has(blocker_id):
 				result["error"] = "Path rule returned an unknown blocker: %s" % blocker_id
 				return result
@@ -167,34 +167,6 @@ static func _simulate_dependency_graph(
 		"has_complete_solution": solution_order.size() == arrow_ids.size(),
 		"solution_order": solution_order,
 	}
-
-
-static func _arrows_by_cell(arrows: Array) -> Dictionary:
-	var arrows_by_cell: Dictionary = {}
-	for arrow_data: Dictionary in arrows:
-		for cell: Vector2i in arrow_data["cells"]:
-			arrows_by_cell[cell] = arrow_data["id"]
-	return arrows_by_cell
-
-
-static func _blocking_arrow_ids(
-	arrow_data: Dictionary,
-	arrows_by_cell: Dictionary,
-	grid_size: Vector2i
-) -> PackedStringArray:
-	var blocking_ids := PackedStringArray()
-	var seen_blockers: Dictionary = {}
-	var direction: Vector2i = PATH_RULE.DIRECTION_VECTORS[arrow_data["direction"]]
-	var path_cell: Vector2i = arrow_data["head_cell"] + direction
-	while path_cell.x >= 1 and path_cell.x <= grid_size.x \
-			and path_cell.y >= 1 and path_cell.y <= grid_size.y:
-		if arrows_by_cell.has(path_cell):
-			var blocker_id: String = arrows_by_cell[path_cell]
-			if not seen_blockers.has(blocker_id):
-				blocking_ids.append(blocker_id)
-				seen_blockers[blocker_id] = true
-		path_cell += direction
-	return blocking_ids
 
 
 static func _validate_input(arrows: Array, grid_size: Vector2i) -> String:

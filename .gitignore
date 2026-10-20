@@ -4,3 +4,7 @@
 tools/balance_sheet/backups/
 tools/balance_sheet/credentials/
 *service-account*.json
+tool/node_modules/
+tool/dist/
+tool/.cache/
+authoring/

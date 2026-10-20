@@ -1,0 +1,15 @@
+{
+	"protocol_version": 1,
+	"request_id": "action-example",
+	"operation": "apply_action",
+	"arrow_id": "B",
+	"stage": {
+		"id": "STAGE-CLI",
+		"grid_size": [5, 5],
+		"blocked_cells": [[5, 5]],
+		"arrows": [
+			{"id": "A", "head_cell": [1, 2], "cells": [[1, 2]], "direction": "RIGHT"},
+			{"id": "B", "head_cell": [3, 2], "cells": [[3, 2]], "direction": "UP"}
+		]
+	}
+}

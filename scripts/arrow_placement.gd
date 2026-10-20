@@ -482,6 +482,10 @@ static func _build_body_from_remaining_avoiding_exit(
 			var candidate: Vector2i = cells.back() + step
 			if not remaining_cells.has(candidate) or body_cells.has(candidate):
 				continue
+			# The segment connected to the arrowhead must extend straight behind it.
+			# Only later body segments may introduce a turn.
+			if previous_step == Vector2i.ZERO and step != -exit_step:
+				continue
 			var offset := candidate - head_cell
 			var lies_on_exit_ray := (exit_step.x != 0 \
 					and offset.y == 0 and offset.x * exit_step.x > 0) \
@@ -883,19 +887,11 @@ static func find_solution_order(arrows: Array, grid_size: Vector2i) -> PackedStr
 		dependents_by_arrow[arrow_id] = PackedStringArray()
 	for arrow_data: Dictionary in arrows:
 		var arrow_id: String = arrow_data["id"]
-		var seen_blockers: Dictionary = {}
-		var direction: Vector2i = PATH_RULE.DIRECTION_VECTORS[arrow_data["direction"]]
-		var path_cell: Vector2i = arrow_data["head_cell"] + direction
-		while _is_cell_in_bounds(path_cell, grid_size):
-			if arrows_by_cell.has(path_cell):
-				var blocker_id: String = arrows_by_cell[path_cell]
-				if blocker_id != arrow_id and not seen_blockers.has(blocker_id):
-					seen_blockers[blocker_id] = true
-					in_degrees[arrow_id] = int(in_degrees[arrow_id]) + 1
-					var dependents: PackedStringArray = dependents_by_arrow[blocker_id]
-					dependents.append(arrow_id)
-					dependents_by_arrow[blocker_id] = dependents
-			path_cell += direction
+		for blocker_id: String in PATH_RULE.blocking_arrow_ids(arrow_data, arrows_by_cell, grid_size):
+			in_degrees[arrow_id] = int(in_degrees[arrow_id]) + 1
+			var dependents: PackedStringArray = dependents_by_arrow[blocker_id]
+			dependents.append(arrow_id)
+			dependents_by_arrow[blocker_id] = dependents
 
 	var solution_order := PackedStringArray()
 	var processed: Dictionary = {}
@@ -923,11 +919,7 @@ static func _has_blocked_arrow(arrows: Array, grid_size: Vector2i) -> bool:
 
 
 static func _arrows_by_cell(arrows: Array) -> Dictionary:
-	var arrows_by_cell: Dictionary = {}
-	for arrow_data: Dictionary in arrows:
-		for cell: Vector2i in arrow_data["cells"]:
-			arrows_by_cell[cell] = arrow_data["id"]
-	return arrows_by_cell
+	return PATH_RULE.index_cells(arrows)
 
 
 static func _arrow_path_is_clear(
@@ -935,13 +927,7 @@ static func _arrow_path_is_clear(
 	arrows_by_cell: Dictionary,
 	grid_size: Vector2i
 ) -> bool:
-	var direction: Vector2i = PATH_RULE.DIRECTION_VECTORS[arrow_data["direction"]]
-	var path_cell: Vector2i = arrow_data["head_cell"] + direction
-	while _is_cell_in_bounds(path_cell, grid_size):
-		if arrows_by_cell.has(path_cell):
-			return false
-		path_cell += direction
-	return true
+	return PATH_RULE.blocking_arrow_ids(arrow_data, arrows_by_cell, grid_size).is_empty()
 
 
 static func _place_arrow(
@@ -1161,7 +1147,10 @@ static func _available_directions(
 
 	var available: Array[String] = []
 	for direction_index: int in DIRECTIONS.size():
-		var path_cell: Vector2i = head_cell + STEP_VECTORS[direction_index]
+		var direction_step: Vector2i = STEP_VECTORS[direction_index]
+		if cells.size() > 1 and cells[1] != head_cell - direction_step:
+			continue
+		var path_cell: Vector2i = head_cell + direction_step
 		var path_is_blocked := false
 		while _is_cell_in_bounds(path_cell, grid_size):
 			if body_cells.has(path_cell) or existing_occupied_cells.has(path_cell):

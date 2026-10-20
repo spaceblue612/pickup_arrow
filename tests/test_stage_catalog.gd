@@ -158,6 +158,23 @@ func _test_invalid_definitions() -> void:
 	}
 	_expect(not STAGE_CATALOG.validate_stage(disconnected_body)["is_valid"], "Disconnected body cells are rejected")
 
+	var arrowhead_bend := {
+		"id": "INVALID-ARROWHEAD-BEND",
+		"grid_size": Vector2i(9, 9),
+		"arrows": [
+			{
+				"id": "A",
+				"head_cell": Vector2i(2, 2),
+				"cells": [Vector2i(2, 2), Vector2i(2, 3)],
+				"direction": "RIGHT",
+			},
+		],
+	}
+	_expect(
+		not STAGE_CATALOG.validate_stage(arrowhead_bend)["is_valid"],
+		"An arrow cannot bend directly at its arrowhead"
+	)
+
 	var overlapping_bodies := {
 		"id": "INVALID-OVERLAP",
 		"grid_size": Vector2i(9, 9),

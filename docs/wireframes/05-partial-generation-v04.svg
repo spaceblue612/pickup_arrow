@@ -1,0 +1,252 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200">
+<title>기존 배치를 유지하는 부분 생성 — 점유율 또는 추가 개수 설정</title>
+<desc>기존 배치를 유지하며 목표 전체 점유율 또는 추가 화살표 수로 랜덤 생성량을 정하는 화면 제안. 보드와 수치는 설명용 예시이며 실제 생성 결과가 아닙니다.</desc>
+<g font-family="'Noto Sans CJK KR',sans-serif">
+<rect x="0" y="0" width="1600" height="1200" rx="3" fill="#f1f1f1" stroke="none" />
+<text x="18" y="25" font-size="14" font-weight="600" fill="#333" text-anchor="start">와이어프레임 v0.4 · 배치와 사용 흐름 검토용</text>
+<text x="1580" y="25" font-size="13" font-weight="400" fill="#666" text-anchor="end">부분 생성 화면 제안 · 보드와 수치는 설명용 예시</text>
+<rect x="0" y="38" width="1600" height="65" rx="3" fill="#fff" stroke="#aaa" />
+<text x="20" y="78" font-size="23" font-weight="600" fill="#333" text-anchor="start">Arrow Stage Editor</text>
+<text x="310" y="77" font-size="18" font-weight="500" fill="#333" text-anchor="start">STAGE-004 · 후보 A · v3 이후 수정 중</text>
+<rect x="1205" y="53" width="108" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="1259" y="76" font-size="14" font-weight="400" fill="#222" text-anchor="middle">맵 열기</text>
+<rect x="1327" y="53" width="108" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="1381" y="76" font-size="14" font-weight="400" fill="#222" text-anchor="middle">저장</text>
+<rect x="1449" y="53" width="132" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="1515" y="76" font-size="14" font-weight="400" fill="#222" text-anchor="middle">확정안 지정</text>
+<rect x="16" y="119" width="500" height="90" rx="3" fill="#fff" stroke="#777"/>
+<text x="32" y="150" font-size="18" font-weight="600" fill="#333" text-anchor="start">현재 작업: 후보 A · v3 이후 수정 중</text>
+<text x="32" y="183" font-size="14" font-weight="400" fill="#555" text-anchor="start">후보 A를 불러와 중앙 보드에서 이어서 작업</text>
+<rect x="550" y="119" width="500" height="90" rx="3" fill="#fff" stroke="#777"/>
+<text x="566" y="150" font-size="18" font-weight="600" fill="#333" text-anchor="start">저장 → A v4 / 새 후보로 저장 → 후보 C</text>
+<text x="566" y="183" font-size="14" font-weight="400" fill="#555" text-anchor="start">같은 방향은 같은 후보에 누적 · 다른 방향은 명시적 분기</text>
+<rect x="1084" y="119" width="500" height="90" rx="3" fill="#fff" stroke="#777"/>
+<text x="1100" y="150" font-size="18" font-weight="600" fill="#333" text-anchor="start">STAGE-004 확정안 · 아직 없음</text>
+<text x="1100" y="183" font-size="14" font-weight="400" fill="#555" text-anchor="start">편집 완료 → 검증 → 확정안 지정 (흐름 제안)</text>
+<text x="533" y="174" font-size="23" font-weight="600" fill="#555" text-anchor="middle">→</text>
+<text x="1067" y="174" font-size="23" font-weight="600" fill="#555" text-anchor="middle">→</text>
+<g transform="translate(0,104)">
+<rect x="16" y="119" width="208" height="918" rx="3" fill="#fff" stroke="#bbb" />
+<text x="32" y="149" font-size="18" font-weight="600" fill="#333" text-anchor="start">스테이지</text>
+<rect x="30" y="166" width="180" height="34" rx="3" fill="#f8f8f8" stroke="#ccc" />
+<text x="42" y="189" font-size="14" font-weight="400" fill="#888" text-anchor="start">이름 / ID 검색</text>
+<rect x="28" y="216" width="184" height="60" rx="3" fill="#fff" stroke="#ccc" />
+<text x="40" y="240" font-size="15" font-weight="600" fill="#333" text-anchor="start">STAGE-003</text>
+<text x="40" y="261" font-size="12" font-weight="400" fill="#666" text-anchor="start">저장된 맵</text>
+<rect x="28" y="286" width="184" height="60" rx="3" fill="#e7e7e7" stroke="#555" />
+<text x="40" y="310" font-size="15" font-weight="600" fill="#333" text-anchor="start">STAGE-004</text>
+<text x="40" y="331" font-size="12" font-weight="400" fill="#666" text-anchor="start">후보 A 편집 중</text>
+<rect x="28" y="356" width="184" height="60" rx="3" fill="#fff" stroke="#ccc" />
+<text x="40" y="380" font-size="15" font-weight="600" fill="#333" text-anchor="start">STAGE-005</text>
+<text x="40" y="401" font-size="12" font-weight="400" fill="#666" text-anchor="start">저장된 맵</text>
+<rect x="30" y="442" width="180" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="120" y="465" font-size="14" font-weight="400" fill="#222" text-anchor="middle">새 작업 시작</text>
+<rect x="30" y="486" width="180" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="120" y="509" font-size="14" font-weight="400" fill="#222" text-anchor="middle">새 후보로 분기</text>
+<line x1="30" y1="550" x2="210" y2="550" stroke="#ccc" />
+<text x="32" y="578" font-size="15" font-weight="600" fill="#333" text-anchor="start">선택한 맵</text>
+<text x="32" y="609" font-size="13" font-weight="400" fill="#555" text-anchor="start">비교 대상으로 선택</text>
+<text x="32" y="637" font-size="13" font-weight="400" fill="#555" text-anchor="start">복제해서 편집</text>
+<text x="32" y="973" font-size="13" font-weight="400" fill="#666" text-anchor="start">빈 보드도 같은</text>
+<text x="32" y="995" font-size="13" font-weight="400" fill="#666" text-anchor="start">편집 도구로 작업합니다.</text>
+<rect x="240" y="119" width="988" height="650" rx="3" fill="#fff" stroke="#bbb" />
+<rect x="256" y="132" width="92" height="34" rx="3" fill="#dedede" stroke="#333" />
+<text x="302" y="155" font-size="14" font-weight="600" fill="#222" text-anchor="middle">선택</text>
+<rect x="358" y="132" width="92" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="404" y="155" font-size="14" font-weight="400" fill="#222" text-anchor="middle">화살표</text>
+<rect x="460" y="132" width="92" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="506" y="155" font-size="14" font-weight="400" fill="#222" text-anchor="middle">영역 편집</text>
+<rect x="565" y="132" width="62" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="596" y="155" font-size="14" font-weight="400" fill="#222" text-anchor="middle">↶</text>
+<rect x="635" y="132" width="62" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="666" y="155" font-size="14" font-weight="400" fill="#222" text-anchor="middle">↷</text>
+<rect x="709" y="132" width="205" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="811.5" y="155" font-size="13" font-weight="400" fill="#222" text-anchor="middle">새 후보로 저장 (분기)</text>
+<rect x="928" y="132" width="118" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="987" y="155" font-size="14" font-weight="400" fill="#222" text-anchor="middle">풀이 확인</text>
+<rect x="1057" y="132" width="153" height="34" rx="3" fill="#fafafa" stroke="#aaa" />
+<text x="1133.5" y="155" font-size="14" font-weight="400" fill="#222" text-anchor="middle">다른 맵과 비교</text>
+<text x="257" y="194" font-size="15" font-weight="600" fill="#333" text-anchor="start">후보 A · 추가 생성 미리보기  /  실선: 기존 배치 · 점선: 추가 예정</text>
+<text x="1208" y="194" font-size="13" font-weight="400" fill="#666" text-anchor="end">전체 보기   −   100%   ＋</text>
+<rect x="256" y="212" width="956" height="502" rx="3" fill="#fcfcfc" stroke="#aaa" />
+<defs>
+<pattern id="mainGrid" width="35.666666666666664" height="35.666666666666664" x="520" y="242" patternUnits="userSpaceOnUse">
+<path d="M 35.666666666666664 0 L 0 0 0 35.666666666666664" fill="none" stroke="#dedede" stroke-width="1"/>
+</pattern>
+</defs>
+<rect x="520" y="242" width="428" height="428" rx="3" fill="url(#mainGrid)" stroke="#999" />
+<rect x="520" y="598.6666666666666" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="520" y="634.3333333333333" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="555.6666666666666" y="634.3333333333333" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="912.3333333333333" y="242" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="912.3333333333333" y="277.6666666666667" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<polyline points="573.5,402.5 573.5,331.16666666666663 680.5,331.16666666666663" stroke="#111" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 673.5 338.16666666666663 L 680.5 331.16666666666663 L 673.5 324.16666666666663" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round"/>
+<polyline points="751.8333333333333,295.5 858.8333333333333,295.5 858.8333333333333,402.5" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 851.8333333333333 395.5 L 858.8333333333333 402.5 L 865.8333333333333 395.5" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="787.5,473.8333333333333 716.1666666666666,473.8333333333333 716.1666666666666,402.5 644.8333333333334,402.5" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 651.8333333333334 395.5 L 644.8333333333334 402.5 L 651.8333333333334 409.5" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="609.1666666666666,473.8333333333333 609.1666666666666,545.1666666666666 680.5,545.1666666666666" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 673.5 552.1666666666666 L 680.5 545.1666666666666 L 673.5 538.1666666666666" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="787.5,545.1666666666666 858.8333333333333,545.1666666666666 858.8333333333333,473.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 865.8333333333333 480.8333333333333 L 858.8333333333333 473.8333333333333 L 851.8333333333333 480.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="680.5,616.5 787.5,616.5 787.5,652.1666666666666" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 780.5 645.1666666666666 L 787.5 652.1666666666666 L 794.5 645.1666666666666" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="894.5,616.5 894.5,580.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 901.5 587.8333333333333 L 894.5 580.8333333333333 L 887.5 587.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="680.5,259.8333333333333 609.1666666666666,259.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 616.1666666666666 252.83333333333331 L 609.1666666666666 259.8333333333333 L 616.1666666666666 266.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="537.8333333333334,295.5 537.8333333333334,402.5" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 530.8333333333334 395.5 L 537.8333333333334 402.5 L 544.8333333333334 395.5" fill="none" stroke="#333" stroke-width="2"/>
+<polyline points="894.5,295.5 894.5,438.16666666666663" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 887.5 431.16666666666663 L 894.5 438.16666666666663 L 901.5 431.16666666666663" fill="none" stroke="#333" stroke-width="2"/>
+<polyline points="644.8333333333334,473.8333333333333 680.5,473.8333333333333 680.5,509.5 716.1666666666666,509.5 751.8333333333333,509.5 751.8333333333333,580.8333333333333" fill="none" stroke="#333" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 744.8333333333333 573.8333333333333 L 751.8333333333333 580.8333333333333 L 758.8333333333333 573.8333333333333" fill="none" stroke="#333" stroke-width="2"/>
+<text x="272" y="702" font-size="12" font-weight="400" fill="#777" text-anchor="start">12 × 12 · 화면 배치용 예시 보드</text>
+<rect x="256" y="727" width="956" height="28" rx="3" fill="#f7f7f7" stroke="#ddd" />
+<text x="270" y="747" font-size="13" font-weight="400" fill="#555" text-anchor="start">미리보기 중 · 기존 배치는 유지됩니다 / [적용]하면 작업 보드에 반영하며 후보 저장은 별도입니다</text>
+<rect x="1244" y="119" width="340" height="918" rx="3" fill="#fff" stroke="#bbb"/>
+<text x="1262" y="151" font-size="20" font-weight="600" fill="#333" text-anchor="start">추가 생성</text>
+<text x="1566" y="151" font-size="12" font-weight="400" fill="#666" text-anchor="end">생성 조건</text>
+<rect x="1262" y="171" width="302" height="62" rx="3" fill="#eee" stroke="#aaa"/>
+<text x="1276" y="197" font-size="16" font-weight="600" fill="#333" text-anchor="start">기존 화살표 8개 유지</text>
+<text x="1276" y="220" font-size="12" font-weight="400" fill="#555" text-anchor="start">위치 · 방향 · 몸체를 바꾸지 않습니다</text>
+<text x="1262" y="262" font-size="14" font-weight="500" fill="#333" text-anchor="start">현재 40 / 139칸 · 점유율 28.8%</text>
+<text x="1262" y="285" font-size="12" font-weight="400" fill="#666" text-anchor="start">배치 금지 칸은 비율 계산에서 제외</text>
+<rect x="1262" y="305" width="302" height="105" rx="3" fill="#eee" stroke="#444"/>
+<text x="1276" y="331" font-size="15" font-weight="600" fill="#333" text-anchor="start">● 전체 점유율까지 채우기</text>
+<rect x="1451" y="343" width="95" height="30" rx="3" fill="#fff" stroke="#999"/>
+<text x="1498" y="364" font-size="15" font-weight="600" fill="#222" text-anchor="middle">40 %</text>
+<text x="1276" y="364" font-size="14" font-weight="400" fill="#333" text-anchor="start">목표 점유율</text>
+<text x="1276" y="394" font-size="12" font-weight="400" fill="#555" text-anchor="start">약 56칸까지 · 현재보다 약 16칸 추가</text>
+<rect x="1262" y="425" width="302" height="93" rx="3" fill="#fafafa" stroke="#bbb"/>
+<text x="1276" y="451" font-size="15" font-weight="500" fill="#333" text-anchor="start">○ 화살표 개수 추가</text>
+<rect x="1451" y="464" width="95" height="30" rx="3" fill="#f5f5f5" stroke="#aaa"/>
+<text x="1498" y="486" font-size="15" font-weight="400" fill="#555" text-anchor="middle">3 개</text>
+<text x="1276" y="486" font-size="12" font-weight="400" fill="#555" text-anchor="start">현재 8개 → 총 11개</text>
+<text x="1262" y="543" font-size="14" font-weight="500" fill="#333" text-anchor="start">생성 위치</text>
+<text x="1564" y="543" font-size="13" font-weight="400" fill="#555" text-anchor="end">보드 전체의 빈칸</text>
+<text x="1262" y="583" font-size="14" font-weight="500" fill="#333" text-anchor="start">추가 화살표 길이</text>
+<rect x="1451" y="561" width="113" height="30" rx="3" fill="#fafafa" stroke="#bbb"/>
+<text x="1507" y="582" font-size="14" font-weight="400" fill="#333" text-anchor="middle">2 ~ 10</text>
+<text x="1262" y="622" font-size="14" font-weight="600" fill="#333" text-anchor="start">세부 생성 조건  ▸</text>
+<text x="1262" y="650" font-size="12" font-weight="400" fill="#666" text-anchor="start">굴곡 · 방향 · 맞물림 · 분산</text>
+<text x="1262" y="685" font-size="13" font-weight="400" fill="#555" text-anchor="start">seed: 자동 변경</text>
+<rect x="1262" y="705" width="302" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="1413" y="728" font-size="13" font-weight="400" fill="#222" text-anchor="middle">이 조건으로 다시 생성</text>
+<rect x="1262" y="757" width="302" height="115" rx="3" fill="#f7f7f7" stroke="#bbb"/>
+<text x="1276" y="785" font-size="15" font-weight="600" fill="#333" text-anchor="start">미리보기 결과</text>
+<text x="1276" y="813" font-size="13" font-weight="400" fill="#333" text-anchor="start">기존 8개 + 신규 3개 = 11개</text>
+<text x="1276" y="839" font-size="13" font-weight="400" fill="#333" text-anchor="start">점유율 28.8% → 약 40.3%</text>
+<text x="1276" y="861" font-size="12" font-weight="400" fill="#666" text-anchor="start">규칙 · 풀이 검증 상태를 함께 표시</text>
+<rect x="1262" y="896" width="145" height="34" rx="3" fill="#ddd" stroke="#333"/>
+<text x="1334.5" y="919" font-size="13" font-weight="600" fill="#222" text-anchor="middle">적용</text>
+<rect x="1419" y="896" width="145" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="1491.5" y="919" font-size="13" font-weight="400" fill="#222" text-anchor="middle">취소</text>
+<text x="1262" y="960" font-size="13" font-weight="400" fill="#555" text-anchor="start">적용: 현재 작업 보드에 반영</text>
+<text x="1262" y="985" font-size="13" font-weight="400" fill="#555" text-anchor="start">후보로 남기려면 별도로 저장</text>
+<rect x="240" y="785" width="988" height="252" rx="3" fill="#fff" stroke="#bbb"/>
+<text x="256" y="817" font-size="18" font-weight="600" fill="#333" text-anchor="start">저장한 후보 · 2개</text>
+<text x="1208" y="817" font-size="13" font-weight="400" fill="#666" text-anchor="end">같은 후보의 수정은 이력으로 누적 · 분기할 때만 새 후보</text>
+<rect x="256" y="838" width="222" height="184" rx="3" fill="#ededed" stroke="#333"/>
+<text x="268" y="862" font-size="14" font-weight="600" fill="#333" text-anchor="start">후보 A · 원안</text>
+<g transform="translate(268,875) scale(0.16)">
+<g transform="">
+<g transform="translate(-520,-242)">
+<defs>
+<pattern id="savedCandidateGrid0" width="35.666666666666664" height="35.666666666666664" x="520" y="242" patternUnits="userSpaceOnUse">
+<path d="M 35.666666666666664 0 L 0 0 0 35.666666666666664" fill="none" stroke="#dedede" stroke-width="1"/>
+</pattern>
+</defs>
+<rect x="520" y="242" width="428" height="428" rx="3" fill="url(#savedCandidateGrid0)" stroke="#999" />
+<rect x="520" y="598.6666666666666" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="520" y="634.3333333333333" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="555.6666666666666" y="634.3333333333333" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="912.3333333333333" y="242" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="912.3333333333333" y="277.6666666666667" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<polyline points="573.5,402.5 573.5,331.16666666666663 680.5,331.16666666666663" stroke="#111" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 673.5 338.16666666666663 L 680.5 331.16666666666663 L 673.5 324.16666666666663" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round"/>
+<polyline points="751.8333333333333,295.5 858.8333333333333,295.5 858.8333333333333,402.5" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 851.8333333333333 395.5 L 858.8333333333333 402.5 L 865.8333333333333 395.5" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="787.5,473.8333333333333 716.1666666666666,473.8333333333333 716.1666666666666,402.5 644.8333333333334,402.5" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 651.8333333333334 395.5 L 644.8333333333334 402.5 L 651.8333333333334 409.5" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="609.1666666666666,473.8333333333333 609.1666666666666,545.1666666666666 680.5,545.1666666666666" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 673.5 552.1666666666666 L 680.5 545.1666666666666 L 673.5 538.1666666666666" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="787.5,545.1666666666666 858.8333333333333,545.1666666666666 858.8333333333333,473.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 865.8333333333333 480.8333333333333 L 858.8333333333333 473.8333333333333 L 851.8333333333333 480.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="680.5,616.5 787.5,616.5 787.5,652.1666666666666" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 780.5 645.1666666666666 L 787.5 652.1666666666666 L 794.5 645.1666666666666" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="894.5,616.5 894.5,580.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 901.5 587.8333333333333 L 894.5 580.8333333333333 L 887.5 587.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="680.5,259.8333333333333 609.1666666666666,259.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 616.1666666666666 252.83333333333331 L 609.1666666666666 259.8333333333333 L 616.1666666666666 266.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+</g>
+</g>
+</g>
+<text x="352" y="895" font-size="13" font-weight="600" fill="#333" text-anchor="start">최신 v3</text>
+<text x="352" y="920" font-size="12" font-weight="400" fill="#555" text-anchor="start">현재 편집 중</text>
+<rect x="268" y="974" width="87" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="311.5" y="997" font-size="13" font-weight="400" fill="#222" text-anchor="middle">불러오기</text>
+<rect x="366" y="974" width="99" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="415.5" y="997" font-size="13" font-weight="400" fill="#222" text-anchor="middle">비교</text>
+<rect x="494" y="838" width="222" height="184" rx="3" fill="#fafafa" stroke="#bbb"/>
+<text x="506" y="862" font-size="14" font-weight="600" fill="#333" text-anchor="start">후보 B · 다른 배치</text>
+<g transform="translate(506,875) scale(0.16)">
+<g transform="translate(428,0) scale(-1,1)">
+<g transform="translate(-520,-242)">
+<defs>
+<pattern id="savedCandidateGrid1" width="35.666666666666664" height="35.666666666666664" x="520" y="242" patternUnits="userSpaceOnUse">
+<path d="M 35.666666666666664 0 L 0 0 0 35.666666666666664" fill="none" stroke="#dedede" stroke-width="1"/>
+</pattern>
+</defs>
+<rect x="520" y="242" width="428" height="428" rx="3" fill="url(#savedCandidateGrid1)" stroke="#999" />
+<rect x="520" y="598.6666666666666" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="520" y="634.3333333333333" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="555.6666666666666" y="634.3333333333333" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="912.3333333333333" y="242" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<rect x="912.3333333333333" y="277.6666666666667" width="35.666666666666664" height="35.666666666666664" rx="3" fill="#ddd" stroke="#c2c2c2" />
+<polyline points="573.5,402.5 573.5,331.16666666666663 680.5,331.16666666666663" stroke="#111" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 673.5 338.16666666666663 L 680.5 331.16666666666663 L 673.5 324.16666666666663" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round"/>
+<polyline points="751.8333333333333,295.5 858.8333333333333,295.5 858.8333333333333,402.5" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 851.8333333333333 395.5 L 858.8333333333333 402.5 L 865.8333333333333 395.5" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="787.5,473.8333333333333 716.1666666666666,473.8333333333333 716.1666666666666,402.5 644.8333333333334,402.5" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 651.8333333333334 395.5 L 644.8333333333334 402.5 L 651.8333333333334 409.5" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="609.1666666666666,473.8333333333333 609.1666666666666,545.1666666666666 680.5,545.1666666666666" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 673.5 552.1666666666666 L 680.5 545.1666666666666 L 673.5 538.1666666666666" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="787.5,545.1666666666666 858.8333333333333,545.1666666666666 858.8333333333333,473.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 865.8333333333333 480.8333333333333 L 858.8333333333333 473.8333333333333 L 851.8333333333333 480.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="680.5,616.5 787.5,616.5 787.5,652.1666666666666" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 780.5 645.1666666666666 L 787.5 652.1666666666666 L 794.5 645.1666666666666" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="894.5,616.5 894.5,580.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 901.5 587.8333333333333 L 894.5 580.8333333333333 L 887.5 587.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+<polyline points="680.5,259.8333333333333 609.1666666666666,259.8333333333333" stroke="#777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M 616.1666666666666 252.83333333333331 L 609.1666666666666 259.8333333333333 L 616.1666666666666 266.8333333333333" fill="none" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+</g>
+</g>
+</g>
+<text x="590" y="895" font-size="13" font-weight="600" fill="#333" text-anchor="start">최신 v1</text>
+<text x="590" y="920" font-size="12" font-weight="400" fill="#555" text-anchor="start">A v2에서 분기</text>
+<rect x="506" y="974" width="87" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="549.5" y="997" font-size="13" font-weight="400" fill="#222" text-anchor="middle">불러오기</text>
+<rect x="604" y="974" width="99" height="34" rx="3" fill="#fafafa" stroke="#aaa"/>
+<text x="653.5" y="997" font-size="13" font-weight="400" fill="#222" text-anchor="middle">비교</text>
+<rect x="748" y="838" width="464" height="184" rx="3" fill="#fff" stroke="#aaa"/>
+<text x="764" y="862" font-size="15" font-weight="600" fill="#333" text-anchor="start">후보 A의 저장 이력</text>
+<text x="1196" y="862" font-size="12" font-weight="400" fill="#555" text-anchor="end">3개 버전</text>
+<rect x="764" y="875" width="432" height="28" rx="3" fill="#eee" stroke="#ccc"/>
+<text x="775" y="894" font-size="12" font-weight="600" fill="#333" text-anchor="start">v3 · 최신</text>
+<text x="864" y="894" font-size="12" font-weight="400" fill="#333" text-anchor="start">화살표 몸체 수정</text>
+<text x="1185" y="894" font-size="12" font-weight="400" fill="#555" text-anchor="end">보기</text>
+<rect x="764" y="910" width="432" height="28" rx="3" fill="#fafafa" stroke="#ccc"/>
+<text x="775" y="929" font-size="12" font-weight="600" fill="#333" text-anchor="start">v2</text>
+<text x="864" y="929" font-size="12" font-weight="400" fill="#333" text-anchor="start">중앙 배치 조정 · B 분기의 출발점</text>
+<text x="1185" y="929" font-size="12" font-weight="400" fill="#555" text-anchor="end">보기</text>
+<rect x="764" y="945" width="432" height="28" rx="3" fill="#fafafa" stroke="#ccc"/>
+<text x="775" y="964" font-size="12" font-weight="600" fill="#333" text-anchor="start">v1</text>
+<text x="864" y="964" font-size="12" font-weight="400" fill="#333" text-anchor="start">첫 후보 저장</text>
+<text x="1185" y="964" font-size="12" font-weight="400" fill="#555" text-anchor="end">보기</text>
+<text x="764" y="1006" font-size="12" font-weight="400" fill="#555" text-anchor="start">이전 상태는 이력 안에 보관 · 후보 카드 수는 유지</text>
+<text x="20" y="1064" font-size="13" font-weight="400" fill="#555" text-anchor="start">부분 생성 제안: 기존 배치 유지 + 생성량 선택 → 미리보기 → 적용 / 생성 영역과 맞물림 옵션은 사용자와 논의 중</text>
+</g>
+</g>
+</svg>

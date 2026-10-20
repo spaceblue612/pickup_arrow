@@ -25,16 +25,37 @@ static func evaluate(selected_arrow_id: String, remaining_arrows: Array, grid_si
 		for occupied_cell: Vector2i in arrow_data["cells"]:
 			arrows_by_cell[occupied_cell] = arrow_data["id"]
 
-	var blocking_arrow_ids := PackedStringArray()
-	var path_cell: Vector2i = selected_arrow["head_cell"] + DIRECTION_VECTORS[direction]
+	var blockers := blocking_arrow_ids(selected_arrow, arrows_by_cell, grid_size)
+	return _result(blockers.is_empty(), blockers, "")
+
+
+# These indexed helpers accept runtime arrow data already checked by StageValidator.
+# Callers analyzing an entire board build the occupancy index only once.
+static func index_cells(arrows: Array) -> Dictionary:
+	var arrows_by_cell: Dictionary = {}
+	for arrow_data: Dictionary in arrows:
+		for cell: Vector2i in arrow_data["cells"]:
+			arrows_by_cell[cell] = arrow_data["id"]
+	return arrows_by_cell
+
+
+static func blocking_arrow_ids(
+	arrow_data: Dictionary,
+	arrows_by_cell: Dictionary,
+	grid_size: Vector2i
+) -> PackedStringArray:
+	var blocking_ids := PackedStringArray()
+	var seen_blockers: Dictionary = {}
+	var direction: Vector2i = DIRECTION_VECTORS[arrow_data["direction"]]
+	var path_cell: Vector2i = arrow_data["head_cell"] + direction
 	while _is_cell_in_bounds(path_cell, grid_size):
 		if arrows_by_cell.has(path_cell):
 			var blocker_id: String = arrows_by_cell[path_cell]
-			if not blocking_arrow_ids.has(blocker_id):
-				blocking_arrow_ids.append(blocker_id)
-		path_cell += DIRECTION_VECTORS[direction]
-
-	return _result(blocking_arrow_ids.is_empty(), blocking_arrow_ids, "")
+			if not seen_blockers.has(blocker_id):
+				seen_blockers[blocker_id] = true
+				blocking_ids.append(blocker_id)
+		path_cell += direction
+	return blocking_ids
 
 
 static func _find_arrow(arrow_id: String, arrows: Array) -> Dictionary:

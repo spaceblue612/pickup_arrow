@@ -1,0 +1,15 @@
+const { contextBridge, ipcRenderer } = require("electron");
+contextBridge.exposeInMainWorld(
+  "arrowEditor",
+  Object.freeze({
+    bootstrap: () => ipcRenderer.invoke("editor:bootstrap"),
+    save: (document, expectedRevision) =>
+      ipcRenderer.invoke("editor:save", document, expectedRevision),
+    recover: (recovery) => ipcRenderer.invoke("editor:recover", recovery),
+    core: (request) => ipcRenderer.invoke("editor:core", request),
+    cancel: () => ipcRenderer.invoke("editor:cancel"),
+    settings: (settings) => ipcRenderer.invoke("editor:settings", settings),
+    importStage: () => ipcRenderer.invoke("editor:import"),
+    exportStage: (stage) => ipcRenderer.invoke("editor:export", stage),
+  }),
+);

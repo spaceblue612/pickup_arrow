@@ -3,6 +3,7 @@ extends RefCounted
 
 const STAGE_CATALOG := preload("res://scripts/stage_catalog.gd")
 const PATH_RULE := preload("res://scripts/path_rule.gd")
+const STAGE_VALIDATOR := preload("res://scripts/stage_validator.gd")
 
 enum Phase {
 	LOADING,
@@ -35,7 +36,7 @@ func load_stage(stage_id: String) -> Dictionary:
 
 
 func load_stage_definition(stage_definition: Dictionary) -> Dictionary:
-	var validation := STAGE_CATALOG.validate_stage(stage_definition)
+	var validation := STAGE_VALIDATOR.validate_stage(stage_definition)
 	if not validation["is_valid"]:
 		return _result("load_failed")
 

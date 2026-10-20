@@ -1,0 +1,8 @@
+# Local development executable only; update this path if the project moves.
+# Keep Ubuntu's global unprivileged-user-namespace restriction enabled.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile arrow-studio "/home/mantie/workspaces/00_games/PickupArrow/tool/node_modules/electron/dist/electron" flags=(unconfined) {
+  userns,
+}
