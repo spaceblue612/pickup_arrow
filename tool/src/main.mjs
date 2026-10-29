@@ -30,7 +30,15 @@ protocol.registerSchemesAsPrivileged([
 const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
 const dist = path.resolve(fileURLToPath(new URL("../dist/", import.meta.url)));
 const dataArgument = process.argv.find((a) => a.startsWith("--data-dir="));
-const smoke = process.argv.includes("--smoke-test");
+const smokeArgument = process.argv.find(
+  (argument) =>
+    argument === "--smoke-test" || argument.startsWith("--smoke-test="),
+);
+const smoke = smokeArgument !== undefined;
+const smokeSelection =
+  smokeArgument === "--smoke-test"
+    ? "startup"
+    : smokeArgument?.slice("--smoke-test=".length);
 const directory = dataArgument
   ? path.resolve(dataArgument.slice(11))
   : smoke
@@ -232,7 +240,7 @@ async function start() {
   if (smoke) {
     try {
       const { runSmoke } = await import("../tests/electron-smoke.mjs");
-      const result = await runSmoke(window, store, directory);
+      const result = await runSmoke(window, store, directory, smokeSelection);
       console.log("EDITOR_SMOKE:" + JSON.stringify(result));
       closing = true;
       app.quit();

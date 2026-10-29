@@ -1352,7 +1352,7 @@ export async function runBoardInteractions({
     "wheel zoom stays anchored to pointer",
   );
   await click("화면 맞춤");
-  await click("영역");
+  await click("영역 관리");
   await drag(
     [
       [2, 6],
@@ -1362,8 +1362,8 @@ export async function runBoardInteractions({
   );
   assert.equal(
     await page(`document.querySelector('main').dataset.mode`),
-    "auto",
-    "Esc exits a dedicated tool as well as its gesture",
+    "region",
+    "Esc cancels a gesture while preserving region workspace selection",
   );
   assert.equal(
     (await store.load()).stages.find((s) => s.id === fixtureId).candidates[0]
@@ -1372,6 +1372,7 @@ export async function runBoardInteractions({
     "previews and undo do not create candidate versions",
   );
 
+  await click("화살 배치");
   await menu([6, 4]);
   await click("꺾임 간격 조절");
   await delay(250);
