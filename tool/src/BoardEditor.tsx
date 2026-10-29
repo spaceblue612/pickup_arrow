@@ -73,6 +73,7 @@ type Props = {
   links: boolean;
   busy: boolean;
   editable: boolean;
+  regionPickOnly?: boolean;
   onSelect: (id: string) => void;
   onMode: (mode: BoardMode) => void;
   onEdit: (edit: BoardEdit) => Promise<boolean>;
@@ -273,6 +274,13 @@ export function BoardEditor(p: Props) {
       setContext(null);
     }
   }, [p.mode]);
+  useEffect(() => {
+    if (!p.editable) {
+      clearTransient();
+      setOperation(null);
+      setContext(null);
+    }
+  }, [p.editable]);
   useEffect(
     () => () => {
       serial.current++;
@@ -407,6 +415,11 @@ export function BoardEditor(p: Props) {
     const pos = point(e.clientX, e.clientY),
       c = cell(pos),
       target = hit(pos);
+    if (p.regionPickOnly && !e.shiftKey && !p.busy) {
+      const region = p.regions.find((region) => region.cells.some((value) => sameCell(value, c)));
+      p.onSelectRegion(region?.id ?? "");
+      return;
+    }
     const matrix = svg.current?.getScreenCTM();
     if (!matrix) return;
     let kind: Gesture["kind"];

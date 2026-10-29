@@ -4,6 +4,8 @@ import { summarizeCells } from "./board-metrics.mjs";
 import { TEXT_SIZE } from "./text-size.mjs";
 import { BoardEditor } from "./BoardEditor";
 import { EditorNotice } from "./EditorNotice";
+import { PlacementSettings, PlacementTable } from "./PlacementControls";
+import type { PlacementInputs } from "./PlacementControls";
 import { editorNotice } from "./editor-notice.mjs";
 import { directionFromCells, translateCells } from "./arrow-geometry.mjs";
 import type {
@@ -83,6 +85,10 @@ function App() {
     [step, setStep] = useState(0),
     [view, setView] = useState("work");
   const [links, setLinks] = useState(true);
+  const [placementOpen, setPlacementOpen] = useState(false);
+  const [candidateHistoryOpen, setCandidateHistoryOpen] = useState(false);
+  // Temporary UI inputs only: excluded from Draft, recovery, and core requests.
+  const [placementInputs, setPlacementInputs] = useState<PlacementInputs>({});
   const history = useRef<Draft[]>([]),
     future = useRef<Draft[]>([]);
   const requestSerial = useRef(0),
@@ -107,6 +113,9 @@ function App() {
     setStep(0);
   }
   function loadDraft(next: Draft, candidate: string | null, isDirty = false) {
+    setPlacementOpen(false);
+    setCandidateHistoryOpen(false);
+    setPlacementInputs({});
     setDismissedWarning("");
     requestSerial.current++;
     if (busyRef.current) void window.arrowEditor.cancel();
@@ -249,6 +258,18 @@ function App() {
     free = playback ? playFree : (analysis?.available_arrow_ids ?? []),
     selectedArrow = draft?.stage.arrows.find((a) => a.id === selected);
   const selectedRegion = draft?.regions.find((r) => r.id === regionId);
+  function changePlacementOpen(open: boolean) {
+    setPlacementOpen(open);
+    if (open) setCandidateHistoryOpen(false);
+  }
+  const placementControls = {
+    regions: draft?.regions ?? [],
+    selectedId: selectedRegion?.id ?? "",
+    inputs: placementInputs,
+    onSelect: setRegionId,
+    onChange: (id: string, field: keyof PlacementInputs[string], value: number | undefined) =>
+      setPlacementInputs((current) => ({ ...current, [id]: { ...current[id], [field]: value } })),
+  };
   const regionArrows =
     selectedRegion && board
       ? board.arrows.filter((a) =>
@@ -645,7 +666,7 @@ function App() {
           </button>
           <button
             className={"pill " + (view === "analysis" ? "selected" : "")}
-            onClick={() => setView("analysis")}
+            onClick={() => { setView("analysis"); setPlacementOpen(false); }}
           >
             흐름 분석
           </button>
@@ -899,7 +920,7 @@ function App() {
               </button>
             </section>
           ) : (
-            <div className="workspace-grid">
+            <div className="workspace-grid" data-placement-open={placementOpen}>
               <div className="workspace-left">
                 <section className="board-card">
                   <div className="board-heading">
@@ -923,20 +944,28 @@ function App() {
                   <div className="toolbar">
                     <div className="tool-group" aria-label="작업 모드">
                       {([ ["arrows", "화살 배치"], ["regions", "영역 관리"] ] as const).map(([value, label]) => (
-                        <button key={value} className={"pill compact " + (workspaceMode === value ? "selected" : "")}
-                          disabled={busy || Boolean(playback)} aria-pressed={workspaceMode === value}
-                          onClick={() => { setWorkspaceMode(value); setMode(value === "arrows" ? "auto" : "region"); setMessage(value === "arrows" ? "화살을 편집하세요." : "기존 영역을 클릭하여 선택하거나 빈 곳에서 드래그하여 새 영역을 만드세요."); }}>
+                        <button key={value} className={"pill compact " + (!placementOpen && workspaceMode === value ? "selected" : "")}
+                          disabled={busy || Boolean(playback)} aria-pressed={!placementOpen && workspaceMode === value}
+                          onClick={() => { setPlacementOpen(false); setWorkspaceMode(value); setMode(value === "arrows" ? "auto" : "region"); setMessage(value === "arrows" ? "화살을 편집하세요." : "기존 영역을 클릭하여 선택하거나 빈 곳에서 드래그하여 새 영역을 만드세요."); }}>
                           {label}
                         </button>
                       ))}
+                      <button
+                        className={"pill compact " + (placementOpen ? "selected" : "")}
+                        aria-pressed={placementOpen}
+                        aria-controls="placement-dock"
+                        disabled={busy || Boolean(playback)}
+                        data-testid="placement-open"
+                        onClick={() => changePlacementOpen(!placementOpen)}
+                      >자동 배치</button>
                     </div>
                     <div className="tool-group">
-                      {(workspaceMode === "arrows"
+                      {placementOpen ? <span className="placement-toolbar-note">영역을 클릭해 조절 대상을 선택하세요.</span> : (workspaceMode === "arrows"
                         ? ([ ["auto", "기본 조작"], ["mask", "금지 칸"] ] as const)
                         : ([ ["region", "영역 선택·생성"], ["add-region", "영역 +"], ["remove-region", "영역 −"] ] as const)
                       ).map(([m, label]) => (
                         <button key={m} className={"pill compact " + (mode === m ? "selected" : "")}
-                          disabled={busy || Boolean(playback)} onClick={() => setMode(m)}>{label}</button>
+                          disabled={busy || Boolean(playback)} onClick={() => { setPlacementOpen(false); setMode(m); }}>{label}</button>
                       ))}
                     </div>
                   </div>
@@ -1006,7 +1035,8 @@ function App() {
                       free={free}
                       links={links}
                       busy={busy}
-                      editable={!playback && !recovery}
+                      editable={!playback && !recovery && !placementOpen}
+                      regionPickOnly={placementOpen}
                       onSelect={setSelected}
                       onMode={(next) => setMode(workspaceMode === "regions" && next === "auto" ? "region" : next)}
                       onEdit={applyBoardEdit}
@@ -1063,78 +1093,13 @@ function App() {
                     )}
                   </section>
                 )}
-                <details className="candidates" data-testid="candidate-history">
-                  <summary>
-                    후보와 저장 이력
-                    <span>
-                      {entry?.candidates.length ?? 0}개 후보 · 현재{" "}
-                      {candidate?.versions.length ?? 0}개 버전
-                    </span>
-                  </summary>
-                  <div className="candidate-content">
-                    <div className="candidate-grid">
-                      {entry?.candidates.map((c) => (
-                        <button
-                          className={
-                            "candidate-card " +
-                            (c.id === candidateId ? "active" : "")
-                          }
-                          key={c.id}
-                          onClick={() =>
-                            guarded(() =>
-                              loadDraft(c.versions.at(-1)!.draft, c.id),
-                            )
-                          }
-                        >
-                          <strong>{c.name}</strong>
-                          <span>
-                            v{c.versions.length} · {c.versions.length}개 저장
-                            이력
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    {!entry?.candidates.length && (
-                      <p>‘저장’하면 첫 후보가 만들어집니다.</p>
-                    )}
-                    {candidate && (
-                      <div className="version-tools">
-                        <select
-                          aria-label="저장 버전"
-                          value={versionId}
-                          onChange={(e) => setVersionId(e.target.value)}
-                        >
-                          <option value="">복원할 버전 선택</option>
-                          {candidate.versions.map((v, i) => (
-                            <option value={v.id} key={v.id}>
-                              v{i + 1} · {new Date(v.at).toLocaleString()}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="pill bordered"
-                          disabled={!versionId}
-                          onClick={() => {
-                            const v = candidate.versions.find(
-                              (v) => v.id === versionId,
-                            );
-                            if (v)
-                              guarded(() => {
-                                commit(clone(v.draft));
-                                setMessage(
-                                  "과거 상태를 불러왔습니다. 저장하면 새 버전으로 남습니다.",
-                                );
-                              });
-                          }}
-                        >
-                          이 버전으로 작업 재개
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </details>
+
               </div>
               <aside className="workspace-right">
+                {placementOpen ? (
+                  <PlacementSettings {...placementControls} onClose={() => changePlacementOpen(false)} />
+                ) : (
+                <>
                 <section
                   className="stage-inspector"
                   data-testid="stage-inspector"
@@ -1378,7 +1343,91 @@ function App() {
                     수정 후 재검증하세요. 기존 배치는 자동 보정하지 않습니다.
                   </p>
                 </section>
+                </>
+                )}
               </aside>
+              <div className="workspace-docks">
+                <details
+                  className="candidates"
+                  data-testid="candidate-history"
+                  open={candidateHistoryOpen}
+                  onToggle={(event) => {
+                    const open = event.currentTarget.open;
+                    setCandidateHistoryOpen(open);
+                    if (open) setPlacementOpen(false);
+                  }}
+                >
+                  <summary>
+                    후보와 저장 이력
+                    <span>
+                      {entry?.candidates.length ?? 0}개 후보 · 현재{" "}
+                      {candidate?.versions.length ?? 0}개 버전
+                    </span>
+                  </summary>
+                  <div className="candidate-content">
+                    <div className="candidate-grid">
+                      {entry?.candidates.map((c) => (
+                        <button
+                          className={
+                            "candidate-card " +
+                            (c.id === candidateId ? "active" : "")
+                          }
+                          key={c.id}
+                          onClick={() =>
+                            guarded(() =>
+                              loadDraft(c.versions.at(-1)!.draft, c.id),
+                            )
+                          }
+                        >
+                          <strong>{c.name}</strong>
+                          <span>
+                            v{c.versions.length} · {c.versions.length}개 저장
+                            이력
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {!entry?.candidates.length && (
+                      <p>‘저장’하면 첫 후보가 만들어집니다.</p>
+                    )}
+                    {candidate && (
+                      <div className="version-tools">
+                        <select
+                          aria-label="저장 버전"
+                          value={versionId}
+                          onChange={(e) => setVersionId(e.target.value)}
+                        >
+                          <option value="">복원할 버전 선택</option>
+                          {candidate.versions.map((v, i) => (
+                            <option value={v.id} key={v.id}>
+                              v{i + 1} · {new Date(v.at).toLocaleString()}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="pill bordered"
+                          disabled={!versionId}
+                          onClick={() => {
+                            const v = candidate.versions.find(
+                              (v) => v.id === versionId,
+                            );
+                            if (v)
+                              guarded(() => {
+                                commit(clone(v.draft));
+                                setMessage(
+                                  "과거 상태를 불러왔습니다. 저장하면 새 버전으로 남습니다.",
+                                );
+                              });
+                          }}
+                        >
+                          이 버전으로 작업 재개
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              <PlacementTable {...placementControls} open={placementOpen} onOpenChange={changePlacementOpen} />
+              </div>
             </div>
           )}
           <footer className="preview-footer">
