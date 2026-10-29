@@ -1,4 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import { moveRegion } from "./region-move.mjs";
+import { findRegionEdge, edgeChange } from "./region-edge.mjs";
+import type { RegionEdge } from "./region-edge.mjs";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { fitCamera, preserveCamera, cameraViewBox } from "./board-camera.mjs";
+import type { Camera, Viewport } from "./board-camera.mjs";
 import type {
   Analysis,
   Arrow,
@@ -17,19 +22,22 @@ import {
   resizeBend,
   rotateGroup,
   sameCell,
+  translateCells,
 } from "./arrow-geometry.mjs";
 
-type Camera = { x: number; y: number; zoom: number };
 type Operation = {
   id: string;
   index: number;
-  kind: "rotate" | "gap" | "extend" | "move";
+  kind: "rotate" | "gap" | "extend" | "move" | "duplicate";
   part: "head" | "tail";
 };
 type Gesture = {
   kind:
     | "pan"
+    | "region-move"
+    | "region-edge"
     | "move"
+    | "duplicate"
     | "create"
     | "region"
     | "mask"
@@ -49,6 +57,10 @@ type Gesture = {
   stroke: Cell[];
   id?: string;
   operation?: Operation;
+  edge?: RegionEdge;
+  startPos?: Cell;
+  moveOffset?: Cell;
+  regionCells?: Cell[];
 };
 type Props = {
   stage: Stage;
@@ -65,13 +77,15 @@ type Props = {
   onMode: (mode: BoardMode) => void;
   onEdit: (edit: BoardEdit) => Promise<boolean>;
   onRegion: (cells: Cell[]) => void;
-  onCell: (cell: Cell, mode: "mask" | "add-region" | "remove-region") => void;
+  onSelectRegion: (id: string) => void;
+  onMoveRegion: (cells: Cell[]) => void;
+  onCell: (cells: Cell[], mode: "mask" | "add-region" | "remove-region") => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
   onMessage: (text: string) => void;
 };
 const copy = <T,>(value: T): T => structuredClone(value);
-const initialCamera = (): Camera => ({ x: 0, y: 0, zoom: 1 });
+const initialCamera = (): Camera => ({ x: 0, y: 0, zoom: 1, scale: 1 });
 const centers = (cells: Cell[]) =>
   cells.map(([x, y]) => `${(x - 0.5) * 40},${(y - 0.5) * 40}`).join(" ");
 
@@ -82,6 +96,48 @@ export function BoardEditor(p: Props) {
     serial = useRef(0),
     pendingRef = useRef(false);
   const [camera, setCamera] = useState<Camera>(initialCamera);
+  const viewportRef = useRef<Viewport | null>(null);
+  const [viewport, setViewport] = useState({ width: 1, height: 1 });
+  function measureViewport(fit = false) {
+    const rect = svg.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const next: Viewport = {
+      width: rect.width,
+      height: rect.height,
+      left: rect.left,
+      top: rect.top,
+    };
+    const previous = viewportRef.current;
+    viewportRef.current = next;
+    if (fit || !previous) {
+      setCamera(
+        fitCamera(next, [p.stage.grid_size[0] * 40, p.stage.grid_size[1] * 40]),
+      );
+    } else if (previous.left !== next.left || previous.top !== next.top) {
+      setCamera((current) => preserveCamera(current, previous, next));
+      if (gesture.current?.kind === "pan")
+        gesture.current.camera = preserveCamera(
+          gesture.current.camera,
+          previous,
+          next,
+        );
+    }
+    if (
+      !previous ||
+      previous.width !== next.width ||
+      previous.height !== next.height
+    )
+      setViewport({ width: next.width, height: next.height });
+  }
+  // React-driven layout changes and browser/window resizes use the same camera policy.
+  useLayoutEffect(() => {
+    measureViewport();
+  });
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver(() => measureViewport());
+    if (svg.current) observer.observe(svg.current);
+    return () => observer.disconnect();
+  }, []);
   const [hover, setHover] = useState<{ id: string; index: number } | null>(
     null,
   );
@@ -95,11 +151,16 @@ export function BoardEditor(p: Props) {
   const [preview, setPreview] = useState<{ id: string; cells: Cell[] } | null>(
     null,
   );
+  const [regionMovePreview, setRegionMovePreview] = useState<Cell[] | null>(null);
+  const [edgeHover, setEdgeHover] = useState<RegionEdge | null>(null);
+  const [edgePreview, setEdgePreview] = useState<{ cells: Cell[]; mode: "add-region" | "remove-region"; valid: boolean } | null>(null);
   const [stroke, setStroke] = useState<Cell[]>([]),
+    [regionStroke, setRegionStroke] = useState<Cell[]>([]),
     [rectangle, setRectangle] = useState<[Cell, Cell] | null>(null);
   const [pending, setPending] = useState(false),
     [dragging, setDragging] = useState(false),
-    [shift, setShift] = useState(false);
+    [shift, setShift] = useState(false),
+    [alt, setAlt] = useState(false);
   const wheelHandler = useRef<(event: WheelEvent) => void>(() => {});
 
   function point(clientX: number, clientY: number): Cell {
@@ -139,11 +200,33 @@ export function BoardEditor(p: Props) {
   }
   function clearTransient() {
     setHover(null);
+    setEdgeHover(null);
+    setEdgePreview(null);
+    setRegionMovePreview(null);
     gesture.current = null;
     setDragging(false);
     setPreview(null);
     setStroke([]);
+    setRegionStroke([]);
     setRectangle(null);
+  }
+  function finishGesture(g: Gesture, waitingForValidation = false) {
+    gesture.current = null;
+    setDragging(false);
+    setEdgePreview(null);
+    setRegionMovePreview(null);
+    if (!waitingForValidation) {
+      setPreview(null);
+      setStroke([]);
+      setRegionStroke([]);
+      setRectangle(null);
+    }
+    // A board pan only repositions the view; a chosen edit tool remains armed.
+    // All actual arrow gestures are one-shot, regardless of their result.
+    if (g.kind !== "pan") {
+      setOperation(null);
+      if (g.operation) p.onMode("auto");
+    }
   }
   function cancel() {
     if (context) {
@@ -172,8 +255,8 @@ export function BoardEditor(p: Props) {
       p.onMessage("진행 중인 조작을 취소했습니다. 원본은 유지됩니다.");
     } else p.onSelect("");
   }
-  useEffect(() => {
-    setCamera(initialCamera());
+  useLayoutEffect(() => {
+    measureViewport(true);
     clearTransient();
     setOperation(null);
     setContext(null);
@@ -199,6 +282,7 @@ export function BoardEditor(p: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Shift") setShift(e.type === "keydown");
+      if (e.key === "Alt") setAlt(e.type === "keydown");
       if (
         e.type !== "keydown" ||
         e.key !== "Escape" ||
@@ -222,10 +306,11 @@ export function BoardEditor(p: Props) {
     const blur = () => {
       setHover(null);
       setShift(false);
+      setAlt(false);
       if (gesture.current) {
         const active = gesture.current;
         if (active.kind === "pan") setCamera(active.camera);
-        clearTransient();
+        finishGesture(active);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -247,6 +332,7 @@ export function BoardEditor(p: Props) {
       Math.min(6, camera.zoom * Math.exp(-e.deltaY * 0.0015)),
     );
     setCamera({
+      ...camera,
       x: anchor[0] - ((anchor[0] - camera.x) * camera.zoom) / zoom,
       y: anchor[1] - ((anchor[1] - camera.y) * camera.zoom) / zoom,
       zoom,
@@ -284,13 +370,15 @@ export function BoardEditor(p: Props) {
     setPreview(null);
     p.onMode("auto");
     p.onMessage(
-      kind === "move"
-        ? "화살의 아무 부분이나 잡고 전체 이동 · 놓아 검사 · Esc 취소"
-        : kind === "rotate"
-          ? "강조된 그룹을 드래그하여 좌우 90° 회전 · 놓아 검사 · Esc 취소"
-          : kind === "gap"
-            ? "꺾임점을 좌우·위아래로 드래그하여 양쪽 간격 조절 · Esc 취소"
-            : "끝점부터 이어 그리거나 몸체를 따라 줄이세요 · 최소 2칸 · Esc 취소",
+      kind === "duplicate"
+        ? "화살의 아무 부분이나 잡고 복제 후 이동 · 놓아 검사 · Esc 취소"
+        : kind === "move"
+          ? "화살의 아무 부분이나 잡고 전체 이동 · 놓아 검사 · Esc 취소"
+          : kind === "rotate"
+            ? "강조된 그룹을 드래그하여 좌우 90° 회전 · 놓아 검사 · Esc 취소"
+            : kind === "gap"
+              ? "꺾임점을 좌우·위아래로 드래그하여 양쪽 간격 조절 · Esc 취소"
+              : "끝점부터 이어 그리거나 몸체를 따라 줄이세요 · 최소 2칸 · Esc 취소",
     );
     svg.current?.focus();
   }
@@ -325,8 +413,19 @@ export function BoardEditor(p: Props) {
     let chosenOperation = operation;
     if (e.shiftKey) kind = "pan";
     else {
-      if (!p.editable || p.busy || !inside(c)) return;
-      if (operation) {
+      if (!p.editable || p.busy || (!inside(c) && !(p.mode === "region" && edgeHover))) return;
+      if (p.mode === "region" && edgeHover) kind = "region-edge";
+      else if (p.mode === "region" && p.regions.find((r) => r.id === p.regionId)?.cells.some((v) => sameCell(v, c))) kind = "region-move";
+      else if (e.altKey && p.mode === "auto") {
+        if (!target) return;
+        kind = "duplicate";
+        chosenOperation = {
+          id: target.arrow.id,
+          index: target.index,
+          kind: "duplicate",
+          part: "tail",
+        };
+      } else if (operation) {
         const arrow = p.stage.arrows.find((a) => a.id === operation.id);
         if (!arrow) return;
         const index =
@@ -335,10 +434,15 @@ export function BoardEditor(p: Props) {
               ? 0
               : arrow.cells.length - 1
             : operation.index;
-        if (operation.kind === "move" && target?.arrow.id !== arrow.id) return;
+        if (
+          (operation.kind === "move" || operation.kind === "duplicate") &&
+          target?.arrow.id !== arrow.id
+        )
+          return;
         if (
           operation.kind !== "rotate" &&
           operation.kind !== "move" &&
+          operation.kind !== "duplicate" &&
           !sameCell(c, arrow.cells[index])
         ) {
           p.onMessage(
@@ -374,7 +478,8 @@ export function BoardEditor(p: Props) {
     setHover(null);
     e.currentTarget.setPointerCapture(e.pointerId);
     setContext(null);
-    if (kind !== "pan" && !operation) p.onSelect(target?.arrow.id ?? "");
+    if (kind !== "pan" && (!operation || kind === "duplicate"))
+      p.onSelect(target?.arrow.id ?? "");
     gesture.current = {
       kind,
       pointerId: e.pointerId,
@@ -389,7 +494,11 @@ export function BoardEditor(p: Props) {
         kind === "extend" && target ? target.arrow.cells[target.index] : c,
       ],
       id: chosenOperation?.id ?? target?.arrow.id,
-      operation: chosenOperation ?? undefined,
+      operation: kind === "region-edge" ? undefined : chosenOperation ?? undefined,
+      edge: kind === "region-edge" ? edgeHover ?? undefined : undefined,
+      startPos: pos,
+      moveOffset: [0, 0],
+      regionCells: kind === "region-move" ? copy(p.regions.find((r) => r.id === p.regionId)?.cells ?? []) : undefined,
     };
   }
   function update(e: React.PointerEvent<SVGSVGElement>) {
@@ -400,6 +509,10 @@ export function BoardEditor(p: Props) {
     if (!g.dragged && g.kind === "gap") {
       setOperation(g.operation ?? null);
       p.onMessage("양쪽 간격 조절 · 놓아 검사 · Esc 취소");
+    }
+    if (!g.dragged && g.kind === "duplicate") {
+      setOperation(g.operation ?? null);
+      p.onMessage("복제 후 이동 · 놓아 검사 · Esc 취소");
     }
     g.dragged = true;
     setDragging(true);
@@ -413,6 +526,24 @@ export function BoardEditor(p: Props) {
     }
     const pos = point(e.clientX, e.clientY),
       c = cell(pos);
+    if (g.kind === "region-move" && g.regionCells && g.moveOffset) {
+      g.moveOffset = moveRegion(g.regionCells, g.moveOffset, g.last, c, p.regions.filter((r) => r.id !== p.regionId), p.stage.grid_size);
+      g.last = c;
+      setRegionMovePreview(g.regionCells.map(([x, y]) => [x + g.moveOffset![0], y + g.moveOffset![1]]));
+      return;
+    }
+    if (g.kind === "region-edge" && g.edge && g.startPos) {
+      const change = edgeChange(g.edge, (pos[0] - g.startPos[0]) * g.edge.dx + (pos[1] - g.startPos[1]) * g.edge.dy, p.regions.find((r) => r.id === p.regionId)?.cells ?? [], p.regions.filter((r) => r.id !== p.regionId), p.stage.grid_size);
+      setEdgePreview(change ? { ...change, valid: true } : null);
+      return;
+    }
+    if ((g.kind === "add-region" || g.kind === "remove-region") && inside(c)) {
+      const segment = appendStroke([g.last], c);
+      for (const cell of segment) if (!g.stroke.some((v) => sameCell(v, cell))) g.stroke.push(cell);
+      g.last = c;
+      setRegionStroke([...g.stroke]);
+      return;
+    }
     g.last = c;
     if (g.kind === "create") {
       if (!inside(c)) return;
@@ -427,10 +558,10 @@ export function BoardEditor(p: Props) {
     const arrow = g.source.arrows.find((a) => a.id === g.id);
     if (!arrow) return;
     let cells: Cell[];
-    if (g.kind === "move") {
-      cells = arrow.cells.map(([x, y]) => [
-        x + c[0] - g.origin[0],
-        y + c[1] - g.origin[1],
+    if (g.kind === "move" || g.kind === "duplicate") {
+      cells = translateCells(arrow.cells, [
+        c[0] - g.origin[0],
+        c[1] - g.origin[1],
       ]);
     } else if (g.operation?.kind === "extend") {
       if (!inside(c)) return;
@@ -458,19 +589,17 @@ export function BoardEditor(p: Props) {
         cross >= 0,
       );
     } else return;
-    setPreview({ id: arrow.id, cells });
+    setPreview({
+      id: g.kind === "duplicate" ? "DUPLICATE-PREVIEW" : arrow.id,
+      cells,
+    });
   }
   async function submit(command: BoardEdit) {
     const token = ++serial.current;
     pendingRef.current = true;
     setPending(true);
     try {
-      const accepted = await p.onEdit(command);
-      if (token !== serial.current) return;
-      if (accepted) {
-        setOperation(null);
-        p.onMode("auto");
-      }
+      await p.onEdit(command);
     } finally {
       pendingRef.current = false;
       setPending(false);
@@ -483,100 +612,114 @@ export function BoardEditor(p: Props) {
   function up(e: React.PointerEvent<SVGSVGElement>) {
     const g = gesture.current;
     if (!g || g.pointerId !== e.pointerId || e.button !== 0) return;
-    update(e);
-    gesture.current = null;
-    setDragging(false);
-    const c = cell(point(e.clientX, e.clientY));
-    if (g.kind === "pan") return;
-    if (
-      g.kind === "mask" ||
-      g.kind === "add-region" ||
-      g.kind === "remove-region"
-    ) {
-      if (inside(c)) p.onCell(c, g.kind);
-      return;
-    }
-    if (!g.dragged) {
-      setPreview(null);
-      setStroke([]);
-      setRectangle(null);
-      return;
-    }
-    if (!inside(c)) {
-      setPreview(null);
-      setStroke([]);
-      setRectangle(null);
-      p.onMessage("보드 밖에 놓아 조작을 취소했습니다.");
-      return;
-    }
-    if (g.kind === "region") {
-      const cells: Cell[] = [];
-      for (
-        let y = Math.min(g.origin[1], c[1]);
-        y <= Math.max(g.origin[1], c[1]);
-        y++
-      )
+    let waitingForValidation = false;
+    try {
+      update(e);
+      const c = cell(point(e.clientX, e.clientY));
+      if (g.kind === "pan") return;
+      if (g.kind === "region-move" && g.regionCells && g.moveOffset) {
+        if (g.moveOffset[0] || g.moveOffset[1]) p.onMoveRegion(g.regionCells.map(([x, y]) => [x + g.moveOffset![0], y + g.moveOffset![1]]));
+        return;
+      }
+      if (g.kind === "region-edge" && g.edge && g.startPos) {
+        const pos = point(e.clientX, e.clientY);
+        const change = edgeChange(g.edge, (pos[0] - g.startPos[0]) * g.edge.dx + (pos[1] - g.startPos[1]) * g.edge.dy, p.regions.find((r) => r.id === p.regionId)?.cells ?? [], p.regions.filter((r) => r.id !== p.regionId), p.stage.grid_size);
+        if (change) p.onCell(change.cells, change.mode);
+        return;
+      }
+      if (
+        (g.operation || g.kind === "move") &&
+        g.dragged &&
+        sameCell(c, g.origin)
+      ) {
+        p.onMessage("변경 없이 조작을 종료했습니다.");
+        return;
+      }
+      if (
+        g.kind === "mask" ||
+        g.kind === "add-region" ||
+        g.kind === "remove-region"
+      ) {
+        if (g.kind === "mask") { if (inside(c)) p.onCell([c], g.kind); }
+        else p.onCell(g.stroke, g.kind);
+        return;
+      }
+      if (!g.dragged && g.kind === "region" && inside(c)) {
+        const region = p.regions.find((r) => r.cells.some((cell) => sameCell(cell, c)));
+        if (region) {
+          p.onSelectRegion(region.id);
+          p.onMessage(`${region.name} 선택됨 · 영역 + / −로 칸을 수정하세요.`);
+        } else p.onMessage("영역을 클릭하거나 드래그하여 새 영역을 만드세요.");
+        return;
+      }
+      if (!g.dragged) return;
+      if (!inside(c)) {
+        p.onMessage("보드 밖에 놓아 조작을 취소했습니다.");
+        return;
+      }
+      if (g.kind === "region") {
+        const cells: Cell[] = [];
         for (
-          let x = Math.min(g.origin[0], c[0]);
-          x <= Math.max(g.origin[0], c[0]);
-          x++
+          let y = Math.min(g.origin[1], c[1]);
+          y <= Math.max(g.origin[1], c[1]);
+          y++
         )
-          cells.push([x, y]);
-      setRectangle(null);
-      p.onRegion(cells);
-      return;
-    }
-    if (g.kind === "create") {
-      if (g.stroke.length < 2) {
-        setStroke([]);
+          for (
+            let x = Math.min(g.origin[0], c[0]);
+            x <= Math.max(g.origin[0], c[0]);
+            x++
+          )
+            cells.push([x, y]);
+        p.onRegion(cells);
         return;
       }
-      void submit({ kind: "create", source: g.source, cells: g.stroke });
-      return;
-    }
-    if (g.kind === "move") {
-      const offset: Cell = [c[0] - g.origin[0], c[1] - g.origin[1]];
-      if (!offset[0] && !offset[1]) {
-        setPreview(null);
+      if (g.kind === "create") {
+        if (g.stroke.length < 2) return;
+        waitingForValidation = true;
+        void submit({ kind: "create", source: g.source, cells: g.stroke });
         return;
       }
-      void submit({
-        kind: "translate",
-        source: g.source,
-        arrowId: g.id,
-        offset,
-      });
-      return;
+      if (g.kind === "move" || g.kind === "duplicate") {
+        const offset: Cell = [c[0] - g.origin[0], c[1] - g.origin[1]];
+        waitingForValidation = true;
+        void submit({
+          kind: g.kind === "duplicate" ? "duplicate" : "translate",
+          source: g.source,
+          arrowId: g.id,
+          offset,
+        });
+        return;
+      }
+      // Compute the final geometry synchronously; React preview state may lag one frame.
+      const arrow = g.source.arrows.find((a) => a.id === g.id),
+        op = g.operation;
+      if (!arrow || !op) return;
+      let cells: Cell[];
+      if (op.kind === "extend")
+        cells = extendEndpoint(arrow.cells, g.stroke, op.part);
+      else if (op.kind === "gap") {
+        cells = resizeBend(arrow.cells, op.index, [
+          c[0] - g.origin[0],
+          c[1] - g.origin[1],
+        ]);
+      } else {
+        const pos = point(e.clientX, e.clientY),
+          pivot = arrow.cells[op.index],
+          neighbor = arrow.cells[op.index + (op.part === "head" ? -1 : 1)];
+        const cross =
+          (neighbor[0] - pivot[0]) * (pos[1] - (pivot[1] - 0.5) * 40) -
+          (neighbor[1] - pivot[1]) * (pos[0] - (pivot[0] - 0.5) * 40);
+        cells = rotateGroup(arrow.cells, op.index, op.part, cross >= 0);
+      }
+      if (JSON.stringify(cells) === JSON.stringify(arrow.cells)) {
+        p.onMessage("변경 없이 조작을 종료했습니다.");
+        return;
+      }
+      waitingForValidation = true;
+      void submit({ kind: "reshape", source: g.source, arrowId: g.id, cells });
+    } finally {
+      finishGesture(g, waitingForValidation);
     }
-    // Compute the final geometry synchronously; React preview state may lag one frame.
-    const arrow = g.source.arrows.find((a) => a.id === g.id),
-      op = g.operation;
-    if (!arrow || !op) return;
-    let cells: Cell[];
-    if (op.kind === "extend")
-      cells = extendEndpoint(arrow.cells, g.stroke, op.part);
-    else if (op.kind === "gap") {
-      cells = resizeBend(arrow.cells, op.index, [
-        c[0] - g.origin[0],
-        c[1] - g.origin[1],
-      ]);
-    } else {
-      const pos = point(e.clientX, e.clientY),
-        pivot = arrow.cells[op.index],
-        neighbor = arrow.cells[op.index + (op.part === "head" ? -1 : 1)];
-      const cross =
-        (neighbor[0] - pivot[0]) * (pos[1] - (pivot[1] - 0.5) * 40) -
-        (neighbor[1] - pivot[1]) * (pos[0] - (pivot[0] - 0.5) * 40);
-      cells = rotateGroup(arrow.cells, op.index, op.part, cross >= 0);
-    }
-    if (JSON.stringify(cells) === JSON.stringify(arrow.cells)) {
-      clearTransient();
-      setOperation(null);
-      p.onMode("auto");
-      p.onMessage("변경 없이 조작을 종료했습니다.");
-      return;
-    }
-    void submit({ kind: "reshape", source: g.source, arrowId: g.id, cells });
   }
 
   const opArrow = operation
@@ -601,7 +744,7 @@ export function BoardEditor(p: Props) {
     opArrow && operation
       ? operation.kind === "extend"
         ? [pivot!]
-        : operation.kind === "move"
+        : operation.kind === "move" || operation.kind === "duplicate"
           ? opArrow.cells
           : operation.kind === "gap"
             ? opArrow.cells
@@ -610,15 +753,17 @@ export function BoardEditor(p: Props) {
               : opArrow.cells.slice(operation.index)
       : [];
   const title = operation
-    ? operation.kind === "move"
-      ? "전체 이동"
-      : operation.kind === "rotate"
-        ? operation.index === 0 && operation.part === "tail"
-          ? "전체 90° 회전 · 머리 고정"
-          : `${operation.part === "head" ? "머리" : "꼬리"} 쪽 그룹 90° 회전`
-        : operation.kind === "gap"
-          ? "꺾임 간격 조절"
-          : `${operation.part === "head" ? "머리" : "꼬리"} 연장·축소`
+    ? operation.kind === "duplicate"
+      ? "복제 후 이동"
+      : operation.kind === "move"
+        ? "전체 이동"
+        : operation.kind === "rotate"
+          ? operation.index === 0 && operation.part === "tail"
+            ? "전체 90° 회전 · 머리 고정"
+            : `${operation.part === "head" ? "머리" : "꼬리"} 쪽 그룹 90° 회전`
+          : operation.kind === "gap"
+            ? "꺾임 간격 조절"
+            : `${operation.part === "head" ? "머리" : "꼬리"} 연장·축소`
     : "";
   function drawArrow(arrow: Arrow, ghost = false) {
     const [x, y] = arrow.head_cell.map((v) => (v - 0.5) * 40);
@@ -679,8 +824,9 @@ export function BoardEditor(p: Props) {
             ? "corner"
             : "body"
       : "";
-  const hoverLabel =
-    hoverKind === "head"
+  const hoverLabel = alt
+    ? "화살표 · Alt+드래그하여 복제 후 이동"
+    : hoverKind === "head"
       ? "머리 · 드래그하여 연장·축소"
       : hoverKind === "tail"
         ? "꼬리 · 드래그하여 연장·축소"
@@ -703,12 +849,14 @@ export function BoardEditor(p: Props) {
           "editable-board " +
           (shift || gesture.current?.kind === "pan" ? "panning" : "")
         }
-        viewBox={`${camera.x} ${camera.y} ${width / camera.zoom} ${height / camera.zoom}`}
+        viewBox={cameraViewBox(camera, viewport).join(" ")}
+        preserveAspectRatio="none"
         style={
           hoverKind
             ? {
-                cursor:
-                  hoverKind === "head" || hoverKind === "tail"
+                cursor: alt
+                  ? "copy"
+                  : hoverKind === "head" || hoverKind === "tail"
                     ? "crosshair"
                     : "move",
               }
@@ -717,7 +865,11 @@ export function BoardEditor(p: Props) {
         onPointerDown={down}
         onPointerMove={(e) => {
           if (!gesture.current) {
-            const target = hit(point(e.clientX, e.clientY));
+            const pos = point(e.clientX, e.clientY);
+            const matrix = svg.current?.getScreenCTM();
+            const region = p.regions.find((r) => r.id === p.regionId);
+            setEdgeHover(p.mode === "region" && p.editable && !p.busy && !e.shiftKey && region && matrix ? findRegionEdge(region.cells, pos, 8 / Math.max(0.01, Math.min(Math.abs(matrix.a), Math.abs(matrix.d)))) : null);
+            const target = hit(pos);
             const next = target
               ? { id: target.arrow.id, index: target.index }
               : null;
@@ -729,12 +881,12 @@ export function BoardEditor(p: Props) {
           }
           update(e);
         }}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={() => { setHover(null); if (!gesture.current) setEdgeHover(null); }}
         onPointerUp={up}
         onPointerCancel={() => {
           const g = gesture.current;
           if (g?.kind === "pan") setCamera(g.camera);
-          clearTransient();
+          if (g) finishGesture(g);
         }}
         onContextMenu={contextMenu}
         aria-label="화살표 편집 보드"
@@ -757,7 +909,7 @@ export function BoardEditor(p: Props) {
         />
         <rect width={width} height={height} fill="url(#board-grid)" />
         {p.regions.flatMap((r) =>
-          r.cells.map((c) => (
+          (r.id === p.regionId && regionMovePreview ? regionMovePreview : r.cells).map((c) => (
             <rect
               key={r.id + c.join(",")}
               x={(c[0] - 1) * 40}
@@ -773,6 +925,16 @@ export function BoardEditor(p: Props) {
             />
           )),
         )}
+        {regionStroke.map((c) => (
+          <rect key={c.join(",")} x={(c[0] - 1) * 40} y={(c[1] - 1) * 40} width="40" height="40"
+            fill="rgba(255,196,102,.45)" pointerEvents="none" />
+        ))}
+        {(gesture.current?.kind === "region-edge" ? gesture.current.edge : edgeHover)?.cells.map((c) => {
+          const edge = (gesture.current?.kind === "region-edge" ? gesture.current.edge : edgeHover)!;
+          const x = (c[0] - 1) * 40, y = (c[1] - 1) * 40;
+          return <line key={c.join(",")} x1={x + (edge.dx > 0 ? 40 : 0)} y1={y + (edge.dy > 0 ? 40 : 0)} x2={x + (edge.dx > 0 ? 40 : edge.dx < 0 ? 0 : 40)} y2={y + (edge.dy > 0 ? 40 : edge.dy < 0 ? 0 : 40)} stroke="#ffc466" strokeWidth="5" pointerEvents="none" />;
+        })}
+        {edgePreview?.cells.map((c) => <rect key={c.join(",")} x={(c[0] - 1) * 40} y={(c[1] - 1) * 40} width="40" height="40" fill={!edgePreview.valid ? "rgba(255,60,60,.6)" : edgePreview.mode === "add-region" ? "rgba(80,230,160,.55)" : "rgba(255,100,100,.55)"} pointerEvents="none" />)}
         {p.stage.blocked_cells.map((c) => (
           <rect
             key={c.join(",")}
@@ -894,7 +1056,7 @@ export function BoardEditor(p: Props) {
         <span>{Math.round(camera.zoom * 100)}%</span>
         <button
           onClick={() => {
-            if (!gesture.current) setCamera(initialCamera());
+            if (!gesture.current) measureViewport(true);
           }}
         >
           화면 맞춤
@@ -939,6 +1101,9 @@ export function BoardEditor(p: Props) {
             <>
               <button role="menuitem" onClick={() => arm("move", "tail", 0)}>
                 전체 이동
+              </button>
+              <button role="menuitem" onClick={() => arm("duplicate", "tail")}>
+                복제 후 이동
               </button>
               <button role="menuitem" onClick={() => arm("rotate", "tail", 0)}>
                 전체 90° 회전 · 머리 고정
@@ -989,7 +1154,7 @@ export function BoardEditor(p: Props) {
           <button
             role="menuitem"
             onClick={() => {
-              setCamera(initialCamera());
+              measureViewport(true);
               setContext(null);
             }}
           >

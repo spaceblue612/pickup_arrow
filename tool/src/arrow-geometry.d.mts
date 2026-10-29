@@ -1,6 +1,7 @@
 import type { Cell, Direction } from "./types";
 export const DRAG_THRESHOLD: number;
 export function sameCell(a: Cell, b: Cell): boolean;
+export function translateCells(cells: Cell[], offset: Cell): Cell[];
 export function directionFromCells(cells: Cell[]): Direction;
 export function appendStroke(path: Cell[], target: Cell): Cell[];
 export function rotateGroup(

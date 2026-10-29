@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 import { summarizeCells } from "./board-metrics.mjs";
 import { TEXT_SIZE } from "./text-size.mjs";
 import { BoardEditor } from "./BoardEditor";
-import { directionFromCells } from "./arrow-geometry.mjs";
+import { EditorNotice } from "./EditorNotice";
+import { editorNotice } from "./editor-notice.mjs";
+import { directionFromCells, translateCells } from "./arrow-geometry.mjs";
 import type {
   Cell,
   BoardMode,
@@ -65,9 +67,11 @@ function App() {
   const [directory, setDirectory] = useState(""),
     [message, setMessage] = useState(""),
     [error, setError] = useState("");
+  const [dismissedWarning, setDismissedWarning] = useState("");
   const [saving, setSaving] = useState(false),
     [busy, setBusy] = useState(false),
-    [mode, setMode] = useState<Mode>("auto");
+    [mode, setMode] = useState<Mode>("auto"),
+    [workspaceMode, setWorkspaceMode] = useState<"arrows" | "regions">("arrows");
   const [selected, setSelected] = useState(""),
     [regionId, setRegionId] = useState(""),
     [query, setQuery] = useState(""),
@@ -103,9 +107,11 @@ function App() {
     setStep(0);
   }
   function loadDraft(next: Draft, candidate: string | null, isDirty = false) {
+    setDismissedWarning("");
     requestSerial.current++;
     if (busyRef.current) void window.arrowEditor.cancel();
     setMode("auto");
+    setWorkspaceMode("arrows");
     draftRef.current = clone(next);
     setDraft(draftRef.current);
     setCandidateId(candidate);
@@ -253,6 +259,25 @@ function App() {
   const cellStats = board ? summarizeCells(board) : null;
   const legacyShortArrows =
     draft?.stage.arrows.filter((a) => a.cells.length < 2) ?? [];
+  const legacyWarning = legacyShortArrows.length
+    ? `기존 자료에 1칸 화살 ${legacyShortArrows.length}개가 있습니다 (${legacyShortArrows.map((a) => a.id).join(", ")}). 자동으로 바꾸지 않습니다. 삭제 후 2칸 이상으로 다시 그려야 제작 검증·내보내기를 통과합니다.`
+    : "";
+  const warningKey = `${draft?.stage.id}:${legacyWarning}`;
+  const validationError = validation?.length
+    ? `규칙 오류 ${validation.length}개\n${validation.join("\n")}`
+    : "";
+  const notice = editorNotice({
+    error: error || validationError,
+    warning: dismissedWarning !== warningKey ? legacyWarning : "",
+    message,
+  });
+  function dismissNotice() {
+    if (error) setError("");
+    else if (validationError) {
+      setValidation(null);
+      setMessage("검증 오류 알림을 닫았습니다. 수정 후 다시 검증해 주세요.");
+    } else setDismissedWarning(warningKey);
+  }
   const chainDepth =
     analysis?.solution_status === "solved"
       ? Math.max(0, analysis.dependency_depth - 1)
@@ -474,15 +499,31 @@ function App() {
       let stage: Stage,
         id = edit.arrowId ?? "";
       let response: Response;
-      if (edit.kind === "create") {
-        if (!edit.cells || edit.cells.length < 2) return false;
-        id = "ARROW-" + uuid().slice(0, 8);
+      const adding = edit.kind === "create" || edit.kind === "duplicate";
+      if (adding) {
+        let cells = edit.cells;
+        if (edit.kind === "duplicate") {
+          const original = source.stage.arrows.find(
+            (a) => a.id === edit.arrowId,
+          );
+          if (
+            !original ||
+            !edit.offset ||
+            (edit.offset[0] === 0 && edit.offset[1] === 0)
+          )
+            return false;
+          cells = translateCells(original.cells, edit.offset);
+        }
+        if (!cells || cells.length < 2) return false;
+        do {
+          id = "ARROW-" + uuid().slice(0, 8);
+        } while (source.stage.arrows.some((a) => a.id === id));
         stage = clone(source.stage);
         stage.arrows.push({
           id,
-          cells: clone(edit.cells),
-          head_cell: clone(edit.cells[0]),
-          direction: directionFromCells(edit.cells),
+          cells: clone(cells),
+          head_cell: clone(cells[0]),
+          direction: directionFromCells(cells),
         });
         response = unwrap(
           await window.arrowEditor.core({ operation: "validate_stage", stage }),
@@ -502,10 +543,7 @@ function App() {
       }
       if (token !== requestSerial.current || !same(draftRef.current, source))
         return false;
-      if (
-        !response.validation.valid ||
-        (edit.kind !== "create" && !response.edit?.accepted)
-      ) {
+      if (!response.validation.valid || (!adding && !response.edit?.accepted)) {
         setError(
           "배치를 적용하지 않았습니다. 충돌·금지 칸·보드 경계·몸체 연결을 확인해 주세요. " +
             (response.edit?.errors ?? response.validation.errors).join(" / "),
@@ -516,7 +554,11 @@ function App() {
       changed.stage = stage;
       commit(changed);
       setSelected(id);
-      setMessage("배치를 적용했습니다. 실행 취소로 되돌릴 수 있습니다.");
+      setMessage(
+        edit.kind === "duplicate"
+          ? "화살표를 복제했습니다. 실행 취소로 되돌릴 수 있습니다."
+          : "배치를 적용했습니다. 실행 취소로 되돌릴 수 있습니다.",
+      );
       return true;
     } catch (e) {
       if (token === requestSerial.current) fail(e);
@@ -542,32 +584,26 @@ function App() {
     commit(next);
     setRegionId(id);
   }
-  function editCell(c: Cell, mode: "mask" | "add-region" | "remove-region") {
+  function editCell(cells: Cell[], mode: "mask" | "add-region" | "remove-region") {
     if (!draftRef.current) return;
     const next = clone(draftRef.current);
     if (mode === "mask") {
+      const c = cells[0];
       const i = next.stage.blocked_cells.findIndex((p) => key(p) === key(c));
       if (i < 0) next.stage.blocked_cells.push(c);
       else next.stage.blocked_cells.splice(i, 1);
     } else {
       const region = next.regions.find((r) => r.id === regionId);
-      if (!region) {
-        setError("수정할 관리 영역을 먼저 선택해 주세요.");
-        return;
-      }
-      if (
-        mode === "add-region" &&
-        next.regions.some(
-          (r) => r.id !== regionId && r.cells.some((p) => key(p) === key(c)),
-        )
-      ) {
-        setError("관리 영역은 서로 겹칠 수 없습니다.");
-        return;
-      }
-      const i = region.cells.findIndex((p) => key(p) === key(c));
-      if (mode === "add-region" && i < 0) region.cells.push(c);
-      else if (mode === "remove-region" && i >= 0) region.cells.splice(i, 1);
-      else return;
+      if (!region) { setError("수정할 관리 영역을 먼저 선택해 주세요."); return; }
+      if (mode === "add-region" && cells.some((c) => next.regions.some(
+        (r) => r.id !== regionId && r.cells.some((p) => key(p) === key(c)),
+      ))) { setError("관리 영역은 서로 겹칠 수 없습니다."); return; }
+      const selected = new Set(cells.map(key));
+      if (mode === "add-region") {
+        const existing = new Set(region.cells.map(key));
+        region.cells.push(...cells.filter((c) => !existing.has(key(c))));
+      } else region.cells = region.cells.filter((c) => !selected.has(key(c)));
+      if (JSON.stringify(region.cells) === JSON.stringify(draftRef.current.regions.find((r) => r.id === regionId)?.cells)) return;
     }
     commit(next);
   }
@@ -775,31 +811,7 @@ function App() {
               </button>
             </div>
           </div>
-          {error && (
-            <div className="notice error" role="alert">
-              {error}
-              <button onClick={() => setError("")}>닫기</button>
-            </div>
-          )}
-          {legacyShortArrows.length > 0 && (
-            <div className="notice error" role="alert">
-              기존 자료에 1칸 화살 {legacyShortArrows.length}개가 있습니다 (
-              {legacyShortArrows.map((a) => a.id).join(", ")}). 자동으로 바꾸지
-              않습니다. 삭제 후 2칸 이상으로 다시 그려야 제작 검증·내보내기를
-              통과합니다.
-            </div>
-          )}
-          <div
-            className="notice status-notice"
-            role="status"
-            data-testid="editor-status"
-          >
-            <span
-              title={message || "화살표를 선택하거나 드래그하여 편집하세요."}
-            >
-              {message || "화살표를 선택하거나 드래그하여 편집하세요."}
-            </span>
-          </div>
+          <EditorNotice notice={notice} onDismiss={dismissNotice} />
           {recovery && (
             <div className="notice">
               미저장 복구본: {recovery.stageId}
@@ -909,54 +921,24 @@ function App() {
                     </button>
                   </div>
                   <div className="toolbar">
-                    <div className="tool-group">
-                      {(
-                        [
-                          "auto",
-                          "region",
-                          "add-region",
-                          "remove-region",
-                          "mask",
-                        ] as Mode[]
-                      ).map((m, i) => (
-                        <button
-                          key={m}
-                          className={
-                            "pill compact " + (mode === m ? "selected" : "")
-                          }
-                          disabled={busy || Boolean(playback)}
-                          onClick={() => {
-                            setMode(m);
-                            setMessage(
-                              [
-                                "화살 클릭 선택 / 머리·꼬리 연장·축소 / 직선 몸통 이동 / 코너 간격 조절 / 빈 칸 드래그 생성 / Shift 보드 이동 / Esc 취소",
-                                "영역을 드래그하세요. Esc 기본 조작",
-                                "선택 영역에 칸 추가",
-                                "선택 영역에서 칸 제외",
-                                "배치 금지 칸 클릭",
-                              ][i],
-                            );
-                          }}
-                        >
-                          {
-                            [
-                              "기본 조작",
-                              "영역",
-                              "영역 +",
-                              "영역 −",
-                              "금지 칸",
-                            ][i]
-                          }
+                    <div className="tool-group" aria-label="작업 모드">
+                      {([ ["arrows", "화살 배치"], ["regions", "영역 관리"] ] as const).map(([value, label]) => (
+                        <button key={value} className={"pill compact " + (workspaceMode === value ? "selected" : "")}
+                          disabled={busy || Boolean(playback)} aria-pressed={workspaceMode === value}
+                          onClick={() => { setWorkspaceMode(value); setMode(value === "arrows" ? "auto" : "region"); setMessage(value === "arrows" ? "화살을 편집하세요." : "기존 영역을 클릭하여 선택하거나 빈 곳에서 드래그하여 새 영역을 만드세요."); }}>
+                          {label}
                         </button>
                       ))}
                     </div>
-                    <button
-                      className="pill compact"
-                      title="기존 배치 보존·제약 생성은 다음 개발"
-                      disabled
-                    >
-                      부분 생성 · 준비 중
-                    </button>
+                    <div className="tool-group">
+                      {(workspaceMode === "arrows"
+                        ? ([ ["auto", "기본 조작"], ["mask", "금지 칸"] ] as const)
+                        : ([ ["region", "영역 선택·생성"], ["add-region", "영역 +"], ["remove-region", "영역 −"] ] as const)
+                      ).map(([m, label]) => (
+                        <button key={m} className={"pill compact " + (mode === m ? "selected" : "")}
+                          disabled={busy || Boolean(playback)} onClick={() => setMode(m)}>{label}</button>
+                      ))}
+                    </div>
                   </div>
                   <div className="editor-tools">
                     <button
@@ -1026,9 +1008,18 @@ function App() {
                       busy={busy}
                       editable={!playback && !recovery}
                       onSelect={setSelected}
-                      onMode={setMode}
+                      onMode={(next) => setMode(workspaceMode === "regions" && next === "auto" ? "region" : next)}
                       onEdit={applyBoardEdit}
                       onRegion={addRegion}
+                      onSelectRegion={setRegionId}
+                      onMoveRegion={(cells) => {
+                        if (!draftRef.current) return;
+                        const next = clone(draftRef.current);
+                        const region = next.regions.find((r) => r.id === regionId);
+                        if (!region) return;
+                        region.cells = cells;
+                        commit(next);
+                      }}
                       onCell={editCell}
                       onDelete={deleteArrow}
                       onCancel={cancelCore}
@@ -1054,21 +1045,16 @@ function App() {
                     <span>{playback ? "재생 상태" : "편집 원본"}</span>
                   </div>
                 </section>
-                {validation && (
+                {validation && validation.length === 0 && (
                   <section
                     className="validation-panel"
                     data-testid={analysis ? "analysis-ready" : undefined}
                   >
                     <h3>
-                      {validation.length
-                        ? "규칙 오류"
-                        : analysis?.solution_status === "solved"
-                          ? "전체 제거 경로 확인"
-                          : "해결 불가능한 막힘"}
+                      {analysis?.solution_status === "solved"
+                        ? "전체 제거 경로 확인"
+                        : "해결 불가능한 막힘"}
                     </h3>
-                    {validation.map((e, i) => (
-                      <p key={i}>{e}</p>
-                    ))}
                     {analysis && (
                       <p>
                         선택 순서 한 경로의 결과입니다. 반복 압박·커버리지
@@ -1520,7 +1506,8 @@ function App() {
                   disabled={!selectedRegion}
                   onClick={() => {
                     setModal(null);
-                    setMode("auto");
+                    setWorkspaceMode("regions");
+                    setMode("region");
                   }}
                 >
                   이 영역을 보드에서 보기

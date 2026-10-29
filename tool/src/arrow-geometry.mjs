@@ -1,6 +1,9 @@
 // Editor preview geometry only. Godot remains authoritative for placement validity.
 export const DRAG_THRESHOLD = 5;
 export const sameCell = (a, b) => a[0] === b[0] && a[1] === b[1];
+export function translateCells(cells, offset) {
+  return cells.map(([x, y]) => [x + offset[0], y + offset[1]]);
+}
 export function directionFromCells(cells) {
   const [a, b] = cells;
   return a[0] > b[0]
@@ -81,6 +84,14 @@ export function bendInfo(cells, index) {
     nextLength: tailAnchor - index,
   };
 }
+function segmentLength(requested, endpointAttached) {
+  // Both endpoints follow the same crossing rule; internal bends keep one edge.
+  return endpointAttached
+    ? requested === 0
+      ? 1
+      : requested
+    : Math.max(1, requested);
+}
 export function resizeBend(cells, index, delta) {
   const info = bendInfo(cells, index);
   if (!info) return cells.map((c) => [...c]);
@@ -95,23 +106,30 @@ export function resizeBend(cells, index, delta) {
         Math.round(delta[0] * info.axis[0] + delta[1] * info.axis[1]),
       ),
     );
-  // Only the segment attached directly to the head may cross its anchor.
-  // At exactly zero retain one edge; beyond it rebuild with the opposite sign.
-  const headLength =
-    info.anchor === 0
-      ? requestedLength === 0
-        ? 1
-        : requestedLength
-      : Math.max(1, requestedLength);
+  const headLength = segmentLength(requestedLength, info.anchor === 0);
   const before = headLength - info.length;
-  const after = Math.min(
-    info.nextLength - 1,
+  const requestedTailLength =
+    info.nextLength -
     Math.max(
       -999,
-      Math.round(delta[0] * info.nextAxis[0] + delta[1] * info.nextAxis[1]),
-    ),
+      Math.min(
+        999,
+        Math.round(delta[0] * info.nextAxis[0] + delta[1] * info.nextAxis[1]),
+      ),
+    );
+  const tailLength = segmentLength(
+    requestedTailLength,
+    info.tailAnchor === cells.length - 1,
   );
-  if (cells.length + Math.abs(headLength) - info.length - after > 10000)
+  const after = info.nextLength - tailLength;
+  if (
+    cells.length +
+      Math.abs(headLength) -
+      info.length +
+      Math.abs(tailLength) -
+      info.nextLength >
+    10000
+  )
     return cells.map((c) => [...c]);
   const prefixShift = info.nextAxis.map((v) => v * after);
   const suffixShift = info.axis.map((v) => v * before);
@@ -125,10 +143,10 @@ export function resizeBend(cells, index, delta) {
       anchor[1] + info.axis[1] * n * Math.sign(headLength),
     ]);
   const pivot = result.at(-1);
-  for (let n = 1; n <= info.nextLength - after; n++)
+  for (let n = 1; n <= Math.abs(tailLength); n++)
     result.push([
-      pivot[0] + info.nextAxis[0] * n,
-      pivot[1] + info.nextAxis[1] * n,
+      pivot[0] + info.nextAxis[0] * n * Math.sign(tailLength),
+      pivot[1] + info.nextAxis[1] * n * Math.sign(tailLength),
     ]);
   for (const c of cells.slice(info.tailAnchor + 1))
     result.push([c[0] + suffixShift[0], c[1] + suffixShift[1]]);

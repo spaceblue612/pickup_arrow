@@ -15,6 +15,9 @@ export async function runBoardInteractions({
   window.show();
   window.focus();
   await delay(150);
+  await page(
+    `(()=>{window.__boardInputLog=[];for(const type of ['pointerdown','pointermove','pointerup'])window.addEventListener(type,e=>{const svg=document.querySelector('svg.editable-board');if(!svg)return;const point=new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse());window.__boardInputLog.push({type,x:e.clientX,y:e.clientY,cell:[Math.floor(point.x/40)+1,Math.floor(point.y/40)+1],button:e.button,buttons:e.buttons});window.__boardInputLog=window.__boardInputLog.slice(-30);},true)})()`,
+  );
   async function key(keyCode, type = "keyDown") {
     window.webContents.sendInputEvent({ type, keyCode });
     await delay(30);
@@ -51,18 +54,29 @@ export async function runBoardInteractions({
       cancel = false,
       wait = true,
       capture = null,
+      abort = null,
+      alt = false,
+      releaseAlt = false,
+      pressAlt = false,
     } = {},
   ) {
     const positions = [];
     for (const c of cells) positions.push(await screen(c));
     if (shift) await key("Shift");
-    await pointer("mouseDown", positions[0], "left", shift ? ["shift"] : []);
+    if (alt) await key("Alt");
+    await pointer("mouseDown", positions[0], "left", [
+      ...(shift ? ["shift"] : []),
+      ...(alt ? ["alt"] : []),
+    ]);
     if (releaseShift) await key("Shift", "keyUp");
     if (pressShift) await key("Shift");
+    if (releaseAlt) await key("Alt", "keyUp");
+    if (pressAlt) await key("Alt");
     for (const pos of positions.slice(1))
       await pointer("mouseMove", pos, "left", [
         "leftButtonDown",
         ...((shift && !releaseShift) || pressShift ? ["shift"] : []),
+        ...((alt && !releaseAlt) || pressAlt ? ["alt"] : []),
       ]);
     if (capture) {
       await delay(100);
@@ -73,8 +87,14 @@ export async function runBoardInteractions({
         );
     }
     if (cancel) await escape();
+    if (abort === "blur") await page(`window.dispatchEvent(new Event('blur'))`);
+    if (abort === "pointercancel")
+      await page(
+        `document.querySelector('svg.editable-board').dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,bubbles:true}))`,
+      );
     await pointer("mouseUp", positions.at(-1));
     if (shift || pressShift) await key("Shift", "keyUp");
+    if (alt || pressAlt) await key("Alt", "keyUp");
     if (wait) {
       await until(
         `document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('.interactive-board').dataset.pending==='false'`,
@@ -181,45 +201,512 @@ export async function runBoardInteractions({
       `JSON.stringify([...document.querySelectorAll('button')].filter(b=>['↶ 실행 취소','↷ 다시 실행'].includes(b.textContent.trim())).map(b=>b.disabled))`,
     );
   const historyBeforeRoundTrip = await undoState();
-  for (const viaMenu of [false, true]) {
-    if (viaMenu) {
-      await menu([6, 4]);
-      await click("꺾임 간격 조절");
-    }
-    await drag([
-      [6, 4],
-      [7, 5],
-      [6, 4],
-    ]);
+  const roundTrips = [
+    {
+      name: "Alt duplicate",
+      alt: true,
+      path: [
+        [6, 2],
+        [2, 4],
+        [6, 2],
+      ],
+    },
+    {
+      name: "menu duplicate",
+      menuCell: [6, 3],
+      label: "복제 후 이동",
+      path: [
+        [6, 3],
+        [2, 5],
+        [6, 3],
+      ],
+    },
+    {
+      name: "direct move",
+      path: [
+        [6, 3],
+        [7, 3],
+        [6, 3],
+      ],
+    },
+    {
+      name: "direct gap",
+      path: [
+        [6, 4],
+        [7, 5],
+        [6, 4],
+      ],
+    },
+    {
+      name: "direct head",
+      path: [
+        [6, 2],
+        [6, 1],
+        [6, 2],
+      ],
+    },
+    {
+      name: "direct tail",
+      path: [
+        [9, 4],
+        [10, 4],
+        [9, 4],
+      ],
+    },
+    {
+      name: "menu move",
+      menuCell: [9, 4],
+      label: "전체 이동",
+      path: [
+        [9, 4],
+        [10, 5],
+        [9, 4],
+      ],
+    },
+    {
+      name: "whole rotation",
+      menuCell: [6, 2],
+      label: "전체 90° 회전 · 머리 고정",
+      path: [
+        [9, 4],
+        [9, 5],
+        [9, 4],
+      ],
+    },
+    {
+      name: "head rotation",
+      menuCell: [6, 3],
+      label: "머리 쪽 꺾임 추가",
+      path: [
+        [6, 2],
+        [7, 2],
+        [6, 2],
+      ],
+    },
+    {
+      name: "tail rotation",
+      menuCell: [6, 3],
+      label: "꼬리 쪽 꺾임 추가",
+      path: [
+        [9, 4],
+        [9, 5],
+        [9, 4],
+      ],
+    },
+    {
+      name: "menu gap",
+      menuCell: [6, 4],
+      label: "꺾임 간격 조절",
+      path: [
+        [6, 4],
+        [7, 5],
+        [6, 4],
+      ],
+    },
+    {
+      name: "menu head",
+      menuCell: [6, 2],
+      label: "머리 연장·축소",
+      path: [
+        [6, 2],
+        [6, 1],
+        [6, 2],
+      ],
+    },
+    {
+      name: "menu tail",
+      menuCell: [9, 4],
+      label: "꼬리 연장·축소",
+      path: [
+        [9, 4],
+        [10, 4],
+        [9, 4],
+      ],
+    },
+  ];
+  async function assertFinishedUnchanged(name) {
+    assert.equal(
+      await page(`document.querySelectorAll('svg [data-arrow-id]').length`),
+      1,
+      name + " creates no duplicate",
+    );
     assert.deepEqual(
       await shape(),
       original,
-      "returning to the starting corner keeps the original shape",
+      name + " preserves the original shape",
+    );
+    assert.equal(
+      await page(
+        "document.querySelector('.interactive-board').dataset.operation",
+      ),
+      "none",
+      name + " exits its tool",
+    );
+    assert.equal(
+      await page(
+        "document.querySelector('.interactive-board').dataset.editing",
+      ),
+      "false",
+      name + " finishes its gesture",
+    );
+    assert.equal(
+      await page("document.querySelector('main').dataset.mode"),
+      "auto",
+    );
+    assert.equal(
+      await page("document.querySelector('main').dataset.dirty"),
+      "false",
+      name + " creates no dirty state",
+    );
+    assert.equal(
+      await undoState(),
+      historyBeforeRoundTrip,
+      name + " preserves undo/redo",
+    );
+    assert.equal(
+      await page(
+        "document.querySelectorAll('svg.editable-board polyline[stroke=\"#ec48bd\"]').length",
+      ),
+      0,
+      name + " clears preview",
+    );
+  }
+  for (const testCase of roundTrips) {
+    if (testCase.label) {
+      await menu(testCase.menuCell);
+      await click(testCase.label);
+    }
+    await drag(testCase.path, { alt: Boolean(testCase.alt) });
+    await assertFinishedUnchanged(testCase.name);
+  }
+  // A chosen one-shot tool also ends on a click with no drag, or an outside drop.
+  for (const testCase of roundTrips.filter((t) => t.label)) {
+    await menu(testCase.menuCell);
+    await click(testCase.label);
+    await drag([testCase.path[0], testCase.path[0]]);
+    await assertFinishedUnchanged(testCase.name + " click");
+  }
+  await menu([6, 3]);
+  await click("전체 이동");
+  await drag([
+    [6, 3],
+    [0, 3],
+  ]);
+  await assertFinishedUnchanged("outside drop");
+  for (const abort of ["blur", "pointercancel"]) {
+    await menu([6, 4]);
+    await click("꺾임 간격 조절");
+    await drag(
+      [
+        [6, 4],
+        [7, 5],
+      ],
+      { abort },
+    );
+    await assertFinishedUnchanged(abort);
+  }
+  // Panning is not an edit completion: keep an explicitly chosen tool armed.
+  await menu([6, 3]);
+  await click("전체 이동");
+  await drag(
+    [
+      [6, 3],
+      [7, 3],
+    ],
+    { shift: true },
+  );
+  assert.equal(
+    await page(
+      "document.querySelector('.interactive-board').dataset.operation",
+    ),
+    "move",
+  );
+  await escape();
+  await click("화면 맞춤");
+
+  const allArrows = () =>
+    page(
+      `([...document.querySelectorAll('svg [data-arrow-id]')].map(g=>({id:g.dataset.arrowId,cells:g.querySelector('polyline').getAttribute('points').split(' ').map(v=>v.split(',').map(n=>Number(n)/40+.5))})))`,
+    );
+  const originalArrow = (await allArrows())[0];
+  const expectedCopy = original.map(([x, y]) => [x - 4, y + 2]);
+  const viewMetrics = () =>
+    page(
+      `(()=>{const m=document.querySelector('svg.editable-board').getScreenCTM();return {x:m.e,y:m.f,sx:m.a,sy:m.d,zoom:document.querySelector('.board-view-controls span').textContent}})()`,
+    );
+  const assertViewUnchanged = async (before, label) => {
+    await page(
+      `new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`,
+    );
+    const after = await viewMetrics();
+    for (const k of ["x", "y", "sx", "sy"])
+      assert.ok(
+        Math.abs(before[k] - after[k]) < 0.0001,
+        label + " " + k + ": " + JSON.stringify({ before, after }),
+      );
+    assert.equal(
+      after.zoom,
+      before.zoom,
+      label + " preserves the zoom readout",
+    );
+  };
+  const beforeMessages = await viewMetrics();
+  const layoutFrame = () =>
+    page(
+      `['.status-notice','.workspace-grid','.board-card','.canvas-wrap'].map(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {selector,x:r.x,y:r.y,width:r.width,height:r.height}})`,
+    );
+  await page(
+    `(()=>{const n=document.createElement('div');n.dataset.testid='layout-stress-message';n.className='notice';n.style.minHeight='120px';n.textContent='긴 안내 문구와 여러 줄의 정보가 표시되는 상황입니다. '.repeat(30);document.querySelector('.quick-actions').before(n)})()`,
+  );
+  await assertViewUnchanged(beforeMessages, "arbitrary multiline notice");
+  await page(
+    `document.querySelector('[data-testid="layout-stress-message"]').remove()`,
+  );
+  await assertViewUnchanged(beforeMessages, "notice removal");
+  for (const [start, finish, options] of [
+    [
+      [6, 2],
+      [2, 4],
+      { alt: true, releaseAlt: true, capture: "arrow-duplicate.png" },
+    ],
+    [[9, 4], [5, 6], { alt: true }],
+    [[6, 4], [2, 6], { alt: true }],
+    [[6, 3], [2, 5], { alt: true }],
+    [[9, 4], [5, 6], { menu: true }],
+  ]) {
+    const beforeAnalysis = await viewMetrics();
+    await analyze();
+    await assertViewUnchanged(beforeAnalysis, "analysis panel appearance");
+    const beforeCopy = await viewMetrics();
+    if (options.menu) {
+      await menu(start);
+      await click("복제 후 이동");
+    }
+    await drag([start, finish], options);
+    await assertViewUnchanged(
+      beforeCopy,
+      "duplicate and analysis panel invalidation",
+    );
+    const copies = await allArrows();
+    assert.equal(copies.length, 2, "copying creates exactly one new arrow");
+    assert.deepEqual(
+      copies[0],
+      originalArrow,
+      "copying never moves or reshapes the source",
+    );
+    assert.notEqual(copies[1].id, originalArrow.id);
+    assert.deepEqual(copies[1].cells, expectedCopy);
+    assert.equal(
+      await page(`document.querySelector('main').dataset.selectedArrow`),
+      copies[1].id,
     );
     assert.equal(
       await page(
         `document.querySelector('.interactive-board').dataset.operation`,
       ),
       "none",
-      "unchanged spacing exits modification mode",
+    );
+    await undo();
+    await assertViewUnchanged(beforeCopy, "duplicate undo");
+    assert.deepEqual(await allArrows(), [originalArrow]);
+    await click("↷ 다시 실행");
+    await assertViewUnchanged(beforeCopy, "duplicate redo");
+    assert.deepEqual(
+      await allArrows(),
+      copies,
+      "redo restores the same copied arrow ID",
+    );
+    await undo();
+  }
+  for (const finish of [
+    [7, 2],
+    [1, 9],
+  ]) {
+    const beforeError = await viewMetrics();
+    const frameBeforeError = await layoutFrame();
+    await drag([[6, 2], finish], { alt: true });
+    await assertViewUnchanged(beforeError, "collision/bounds warning");
+    assert.deepEqual(
+      await layoutFrame(),
+      frameBeforeError,
+      "an error replaces the fixed status without moving any layout block",
+    );
+    assert.equal(
+      await page(`document.querySelectorAll('main > .notice').length`),
+      1,
+      "there is only one status/error row",
+    );
+    assert.equal(
+      await page(`!!document.querySelector('dialog[open]')`),
+      false,
+      "errors never open a modal automatically",
+    );
+    const fullError = await page(
+      `document.querySelector('.notice-text').title`,
+    );
+    await page(
+      `document.querySelector('[data-testid="notice-details"]').click()`,
+    );
+    await until(
+      `!!document.querySelector('[data-testid="notice-dialog"][open]')`,
     );
     assert.equal(
       await page(
-        `document.querySelector('.interactive-board').dataset.editing`,
+        `document.querySelector('.notice-detail-body pre').textContent`,
       ),
-      "false",
+      fullError,
+      "details retain the complete error",
+    );
+    await window.webContents
+      .capturePage()
+      .then((image) =>
+        writeFile(path.join(directory, "notice-details.png"), image.toPNG()),
+      );
+    await escape();
+    assert.equal(
+      await page(
+        `document.querySelector('[data-testid="editor-status"]').dataset.kind`,
+      ),
+      "error",
+      "Esc closes details but preserves the error",
+    );
+    assert.deepEqual(await layoutFrame(), frameBeforeError);
+    await window.webContents
+      .capturePage()
+      .then((image) =>
+        writeFile(path.join(directory, "notice-fixed-row.png"), image.toPNG()),
+      );
+    assert.deepEqual(
+      await allArrows(),
+      [originalArrow],
+      "overlap and out-of-bounds copies are rejected atomically",
     );
     assert.equal(
-      await page(`document.querySelector('main').dataset.dirty`),
-      "false",
-      "unchanged spacing does not dirty the saved draft",
+      await page(
+        `document.querySelector('.interactive-board').dataset.operation`,
+      ),
+      "none",
     );
-    assert.equal(
-      await undoState(),
-      historyBeforeRoundTrip,
-      "unchanged spacing leaves undo/redo state untouched",
+    await page(
+      `document.querySelector('[data-testid=notice-dismiss]')?.click()`,
+    );
+    await assertViewUnchanged(beforeError, "warning dismissal");
+    assert.deepEqual(
+      await layoutFrame(),
+      frameBeforeError,
+      "dismissing an error does not move the layout",
     );
   }
+  await click("금지 칸");
+  await drag([
+    [3, 6],
+    [3, 6],
+  ]);
+  await click("기본 조작");
+  await drag(
+    [
+      [6, 2],
+      [2, 4],
+    ],
+    { alt: true },
+  );
+  assert.deepEqual(
+    await allArrows(),
+    [originalArrow],
+    "copying into a forbidden cell does not add an arrow",
+  );
+  await page(`document.querySelector('[data-testid=notice-dismiss]')?.click()`);
+  await undo();
+  await click("금지 칸");
+  await drag([
+    [6, 3],
+    [6, 3],
+  ]);
+  await click("기본 조작");
+  const beforeValidationError = await layoutFrame();
+  await click("Godot 검증·분석");
+  await until(
+    `document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('[data-testid="editor-status"]').dataset.kind==='error'&&document.querySelector('[data-testid="editor-status"]').textContent.includes('규칙 오류')`,
+  );
+  assert.deepEqual(
+    await layoutFrame(),
+    beforeValidationError,
+    "rule validation errors use the same fixed row instead of a growing panel",
+  );
+  assert.equal(await page(`!!document.querySelector('dialog[open]')`), false);
+  await page(
+    `document.querySelector('[data-testid="notice-details"]').click()`,
+  );
+  await until(
+    `!!document.querySelector('[data-testid="notice-dialog"][open]')`,
+  );
+  assert.ok(
+    (
+      await page(
+        `document.querySelector('.notice-detail-body pre').textContent`,
+      )
+    ).includes("규칙 오류"),
+  );
+  await page(
+    `document.querySelector('[data-testid="notice-detail-close"]').click()`,
+  );
+  await until(`!document.querySelector('dialog[open]')`);
+  assert.equal(
+    await page(
+      `document.querySelector('[data-testid="editor-status"]').dataset.kind`,
+    ),
+    "error",
+    "closing details does not dismiss validation errors",
+  );
+  await page(
+    `document.querySelector('[data-testid="notice-dismiss"]').click()`,
+  );
+  assert.deepEqual(await layoutFrame(), beforeValidationError);
+  await undo();
+  assert.deepEqual(
+    await allArrows(),
+    [originalArrow],
+    "closing notices never mutates the stage or adds undo entries",
+  );
+  await drag(
+    [
+      [6, 2],
+      [2, 4],
+    ],
+    { alt: true, cancel: true },
+  );
+  assert.deepEqual(
+    await allArrows(),
+    [originalArrow],
+    "Esc cancels the copy preview",
+  );
+  await drag(
+    [
+      [9, 4],
+      [10, 4],
+    ],
+    { pressAlt: true },
+  );
+  assert.equal(
+    (await allArrows()).length,
+    1,
+    "pressing Alt after drag start never switches extension into copying",
+  );
+  assert.deepEqual(await shape(), [...original, [10, 4]]);
+  await undo();
+  await drag(
+    [
+      [6, 4],
+      [7, 5],
+    ],
+    { alt: true, shift: true },
+  );
+  assert.deepEqual(
+    await allArrows(),
+    [originalArrow],
+    "Shift pan takes priority over Alt copy",
+  );
+  await click("화면 맞춤");
 
   // Gesture intent is locked when the button goes down, not when modifiers change.
   const camera = await page(
@@ -300,7 +787,12 @@ export async function runBoardInteractions({
   assert.deepEqual(
     await shape(),
     [[5, 1], [6, 1], ...original],
-    "head drag directly extends with a bend",
+    "head drag directly extends with a bend: " +
+      JSON.stringify(
+        await page(
+          `({input:window.__boardInputLog,error:document.querySelector('.notice.error')?.textContent})`,
+        ),
+      ),
   );
   await undo();
   await drag(
@@ -559,6 +1051,77 @@ export async function runBoardInteractions({
     "Esc preserves the original direction after crossing the head",
   );
 
+  await drag([
+    [6, 4],
+    [9, 4],
+  ]);
+  assert.deepEqual(
+    await shape(),
+    [
+      [8, 2],
+      [8, 3],
+      [8, 4],
+      [9, 4],
+    ],
+    "exact tail contact retains one edge",
+  );
+  await undo();
+  const tailReversed = [
+    [10, 2],
+    [10, 3],
+    [10, 4],
+    [9, 4],
+  ];
+  await drag(
+    [
+      [6, 4],
+      [9, 4],
+      [10, 4],
+    ],
+    { capture: "corner-tail-crossing.png" },
+  );
+  assert.deepEqual(
+    await shape(),
+    tailReversed,
+    "the corner can continue past the tail",
+  );
+  assert.ok(
+    (
+      await page(
+        `document.querySelector('[data-testid="arrow-direction"]').textContent`,
+      )
+    ).includes("위"),
+    "tail crossing keeps the head direction derived from its own segment",
+  );
+  await undo();
+  await click("↷ 다시 실행");
+  assert.deepEqual(await shape(), tailReversed);
+  await undo();
+  await drag(
+    [
+      [6, 4],
+      [10, 4],
+    ],
+    { cancel: true },
+  );
+  assert.deepEqual(await shape(), original, "Esc cancels tail crossing");
+  await drag([
+    [6, 4],
+    [10, 4],
+    [6, 4],
+  ]);
+  assert.deepEqual(
+    await shape(),
+    original,
+    "crossing the tail then returning to origin creates no edit",
+  );
+  assert.equal(
+    await page(
+      `document.querySelector('.interactive-board').dataset.operation`,
+    ),
+    "none",
+  );
+
   await menu([6, 4]);
   await click("꺾임 간격 조절");
   await drag([
@@ -736,7 +1299,7 @@ export async function runBoardInteractions({
     "self-overlap does not alter the original",
   );
   await escape();
-  await page(`document.querySelector('.notice.error button')?.click()`);
+  await page(`document.querySelector('[data-testid=notice-dismiss]')?.click()`);
   await menu([9, 4]);
   await click("꼬리 연장·축소");
   await drag(
@@ -931,8 +1494,13 @@ export async function runBoardInteractions({
     bendSpacing: true,
     twoAxisBendSpacing: true,
     unchangedSpacingExits: true,
+    commonGestureCompletion: true,
+    duplicateArrow: true,
+    layoutIndependentCamera: true,
+    fixedErrorNotice: true,
     directCornerDrag: true,
     cornerHeadCrossing: true,
+    cornerTailCrossing: true,
     hoverPartHints: true,
     headTailExtension: true,
     directEndpointExtension: true,

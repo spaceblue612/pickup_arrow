@@ -7,6 +7,7 @@ import {
   extendEndpoint,
   resizeBend,
   rotateGroup,
+  translateCells,
 } from "../src/arrow-geometry.mjs";
 const cells = [
   [6, 2],
@@ -16,6 +17,22 @@ const cells = [
   [8, 4],
   [9, 4],
 ];
+test("copy placement translates every cell without changing shape, direction, or the source", () => {
+  const before = structuredClone(cells);
+  const copied = translateCells(cells, [-4, 2]);
+  assert.deepEqual(copied, [
+    [2, 4],
+    [2, 5],
+    [2, 6],
+    [3, 6],
+    [4, 6],
+    [5, 6],
+  ]);
+  assert.equal(directionFromCells(copied), directionFromCells(cells));
+  copied[0][0] = 99;
+  assert.deepEqual(cells, before);
+  assert.deepEqual(translateCells(cells, [0, 0]), cells);
+});
 test("quarter turns move only the chosen group around the fixed pivot", () => {
   const original = structuredClone(cells);
   assert.deepEqual(rotateGroup(cells, 1, "tail", true), [
@@ -85,7 +102,7 @@ test("bend spacing adjusts either adjoining segment while preserving group shape
     [8, 5],
     [9, 5],
   ]);
-  assert.deepEqual(resizeBend(cells, 2, [100, -2]), [
+  assert.deepEqual(resizeBend(cells, 2, [3, -2]), [
     [8, 2],
     [8, 3],
     [9, 3],
@@ -115,7 +132,7 @@ test("two-axis spacing works for all bend orientations without mutating the orig
       const shrunk = resizeBend(
         source,
         2,
-        transform([100, -2]).map((v, i) => v - zero[i]),
+        transform([3, -2]).map((v, i) => v - zero[i]),
       );
       assert.equal(shrunk.length, 3);
     }
@@ -162,6 +179,57 @@ test("head-connected spacing crosses the head and derives the reversed direction
     [9, 1],
   ]);
   assert.equal(directionFromCells(diagonal), "DOWN");
+});
+test("tail-connected spacing crosses and crosses back symmetrically in all orientations", () => {
+  const expected = [
+    [10, 2],
+    [10, 3],
+    [10, 4],
+    [9, 4],
+  ];
+  for (const mirror of [1, -1])
+    for (let turns = 0; turns < 4; turns++) {
+      const transform = ([x, y]) => {
+        x *= mirror;
+        for (let n = 0; n < turns; n++) [x, y] = [-y, x];
+        return [x + 30, y + 30];
+      };
+      const zero = transform([0, 0]),
+        delta = transform([4, 0]).map((v, i) => v - zero[i]);
+      const source = cells.map(transform),
+        result = resizeBend(source, 2, delta);
+      assert.deepEqual(result, expected.map(transform));
+      assert.deepEqual(result.at(-1), source.at(-1));
+      assert.equal(directionFromCells(result), directionFromCells(source));
+      assert.deepEqual(
+        resizeBend(
+          result,
+          2,
+          delta.map((v) => -v),
+        ),
+        source,
+      );
+      assert.deepEqual(source, cells.map(transform));
+    }
+  assert.deepEqual(
+    resizeBend(cells, 2, [3, 0]),
+    [
+      [8, 2],
+      [8, 3],
+      [8, 4],
+      [9, 4],
+    ],
+    "exact tail contact preserves one edge",
+  );
+  assert.deepEqual(
+    resizeBend(cells, 2, [4, -3]),
+    [
+      [10, 2],
+      [10, 1],
+      [9, 1],
+    ],
+    "both endpoint segments can cross together",
+  );
 });
 test("spacing translates the groups beyond adjacent bends rigidly and keeps every connection cardinal", () => {
   const source = [[4, 2], [5, 2], [6, 2], ...cells.slice(1), [9, 5], [9, 6]];

@@ -3,7 +3,7 @@ export type BoardMode =
   "auto" | "region" | "add-region" | "remove-region" | "mask";
 export type BoardEdit = {
   source: Stage;
-  kind: "create" | "translate" | "reshape";
+  kind: "create" | "translate" | "reshape" | "duplicate";
   arrowId?: string;
   cells?: Cell[];
   offset?: Cell;

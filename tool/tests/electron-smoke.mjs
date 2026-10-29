@@ -300,7 +300,7 @@ export async function runSmoke(window, store, directory) {
     ).includes("머리 8, 5"),
     "collision keeps original arrow position",
   );
-  await page(`document.querySelector('.notice.error button').click()`);
+  await page(`document.querySelector('[data-testid=notice-dismiss]').click()`);
   await click("영역");
   await drag([3, 4], [9, 8]);
   await save();
@@ -392,7 +392,7 @@ export async function runSmoke(window, store, directory) {
 
   const layouts = [];
   // Collision rejection was asserted above; measure the normal workspace without its error banner.
-  await page(`document.querySelector('.notice.error button')?.click()`);
+  await page(`document.querySelector('[data-testid=notice-dismiss]')?.click()`);
   window.showInactive();
   await delay(300);
   for (const [width, height] of [
@@ -403,6 +403,7 @@ export async function runSmoke(window, store, directory) {
   ]) {
     window.setContentSize(width, height);
     await delay(300);
+    await click("화면 맞춤");
     await page(
       `new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`,
     );
@@ -411,7 +412,10 @@ export async function runSmoke(window, store, directory) {
       const card=document.querySelector('.board-card').getBoundingClientRect();
       const inspector=document.querySelector('[data-testid="stage-inspector"]').getBoundingClientRect();
       const summary=document.querySelector('[data-testid="intent-summary"]').getBoundingClientRect();
-      return {width:innerWidth,height:innerHeight,boardWidth:v.width*m.a,boardHeight:v.height*m.d,
+      const viewport=svg.getBoundingClientRect();
+      const grid=svg.querySelector('rect'),gw=Number(grid.getAttribute('width')),gh=Number(grid.getAttribute('height'));
+      return {width:innerWidth,height:innerHeight,boardWidth:gw*m.a,boardHeight:gh*m.d,
+        fittedBoardHeight:Math.min(viewport.height,viewport.width*gh/gw),
         boardTop:card.top,inspectorTop:inspector.top,summaryBottom:summary.bottom,summaryHeight:summary.height,
         pageOverflow:document.documentElement.scrollWidth>innerWidth||document.documentElement.scrollHeight>innerHeight,
         inspectorFirst:document.querySelector('.workspace-right').firstElementChild.matches('.stage-inspector')};
@@ -425,7 +429,8 @@ export async function runSmoke(window, store, directory) {
     assert.ok(layout.summaryBottom < layout.height, JSON.stringify(layout));
     assert.ok(layout.summaryHeight < 150, JSON.stringify(layout));
     assert.ok(
-      layout.boardHeight > (layout.height < 850 ? 300 : 600),
+      layout.boardHeight > 300 &&
+        Math.abs(layout.boardHeight - layout.fittedBoardHeight) < 1,
       JSON.stringify(layout),
     );
     await click("기본 조작");

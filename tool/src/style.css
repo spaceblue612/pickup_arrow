@@ -370,11 +370,49 @@ main {
   overflow: hidden;
   line-height: 1.5;
 }
-.status-notice > span {
+.status-notice .notice-text {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.notice-icon {
+  flex: none;
+}
+.notice-actions {
+  display: flex;
+  flex: none;
+  gap: 3px;
+}
+.notice-actions button {
+  padding: 0 5px;
+  line-height: 1.5;
+}
+.status-notice[data-kind="warning"] {
+  border-color: #f6c65b;
+}
+.status-notice[data-kind="warning"] .notice-icon {
+  color: #f6c65b;
+}
+.status-notice[data-kind="error"] .notice-icon {
+  color: var(--magenta);
+}
+.notice-dialog {
+  width: min(720px, 94vw);
+  max-height: min(640px, 80dvh);
+}
+.notice-detail-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+.notice-detail-body pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
 }
 .notice > button {
   margin-left: auto;

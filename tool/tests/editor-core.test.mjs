@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { CoreHost } from "../src/core-host.mjs";
-import { resizeBend, extendEndpoint } from "../src/arrow-geometry.mjs";
+import {
+  resizeBend,
+  extendEndpoint,
+  translateCells,
+} from "../src/arrow-geometry.mjs";
 const stage = JSON.parse(
   await readFile(
     new URL("../examples/role_chain.json", import.meta.url),
@@ -15,6 +19,52 @@ const settings = {
   project: fileURLToPath(new URL("../../", import.meta.url)),
   timeoutMs: 15000,
 };
+test("duplicated arrow placement is validated together with the original by Godot", async () => {
+  const host = new CoreHost();
+  const source = structuredClone(stage);
+  source.arrows = [
+    {
+      id: "ORIGINAL",
+      head_cell: [6, 2],
+      cells: [
+        [6, 2],
+        [6, 3],
+        [6, 4],
+        [7, 4],
+        [8, 4],
+        [9, 4],
+      ],
+      direction: "UP",
+    },
+  ];
+  for (const [offset, blocked, valid] of [
+    [[-4, 2], [], true],
+    [[0, 0], [], false],
+    [[1, 0], [], false],
+    [[-4, 2], [[3, 6]], false],
+    [[-5, 7], [], false],
+  ]) {
+    const candidate = structuredClone(source),
+      cells = translateCells(source.arrows[0].cells, offset);
+    candidate.blocked_cells = blocked;
+    candidate.arrows.push({
+      id: "COPY",
+      head_cell: cells[0],
+      cells,
+      direction: "UP",
+    });
+    const response = await host.run(
+      {
+        operation: "validate_stage",
+        stage: candidate,
+        stage_contract: "authoring_v1",
+      },
+      settings,
+    );
+    assert.equal(response.validation.valid, valid);
+    assert.deepEqual(candidate.arrows[0], source.arrows[0]);
+  }
+});
 test("endpoint shortening commits through Godot and derives direction from the remaining body", async () => {
   const host = new CoreHost();
   const source = structuredClone(stage);
@@ -57,6 +107,54 @@ test("endpoint shortening commits through Godot and derives direction from the r
     );
   }
   assert.equal(source.arrows[0].cells.length, 6);
+});
+test("tail crossing is accepted by Godot while forbidden cells and bounds still reject atomically", async () => {
+  const host = new CoreHost(),
+    source = structuredClone(stage);
+  source.arrows = [
+    {
+      id: "A",
+      head_cell: [6, 2],
+      cells: [
+        [6, 2],
+        [6, 3],
+        [6, 4],
+        [7, 4],
+        [8, 4],
+        [9, 4],
+      ],
+      direction: "UP",
+    },
+  ];
+  for (const [delta, blocked, accepted] of [
+    [[4, 0], [], true],
+    [[4, 0], [[10, 3]], false],
+    [[7, 0], [], false],
+  ]) {
+    const input = structuredClone(source);
+    input.blocked_cells = blocked;
+    const cells = resizeBend(input.arrows[0].cells, 2, delta);
+    const response = await host.run(
+      {
+        operation: "reshape_arrow",
+        stage: input,
+        stage_contract: "authoring_v1",
+        arrow_id: "A",
+        cells,
+      },
+      settings,
+    );
+    assert.equal(response.edit.accepted, accepted);
+    if (accepted) {
+      assert.deepEqual(response.edit.stage.arrows[0].cells, [
+        [10, 2],
+        [10, 3],
+        [10, 4],
+        [9, 4],
+      ]);
+      assert.equal(response.edit.stage.arrows[0].direction, "UP");
+    } else assert.deepEqual(response.edit.stage, input);
+  }
 });
 test("crossing a head during spacing reverses direction through Godot but still rejects collisions", async () => {
   const host = new CoreHost();
