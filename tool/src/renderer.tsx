@@ -5,7 +5,7 @@ import { TEXT_SIZE } from "./text-size.mjs";
 import { BoardEditor } from "./BoardEditor";
 import { EditorNotice } from "./EditorNotice";
 import { PlacementSettings, PlacementTable } from "./PlacementControls";
-import type { PlacementInputs } from "./PlacementControls";
+import type { PlacementInputs, LengthRules } from "./PlacementControls";
 import { editorNotice } from "./editor-notice.mjs";
 import { directionFromCells, translateCells } from "./arrow-geometry.mjs";
 import type {
@@ -89,6 +89,8 @@ function App() {
   const [candidateHistoryOpen, setCandidateHistoryOpen] = useState(false);
   // Temporary UI inputs only: excluded from Draft, recovery, and core requests.
   const [placementInputs, setPlacementInputs] = useState<PlacementInputs>({});
+  const [lengthRules, setLengthRules] = useState<LengthRules>({});
+  const [baseLength, setBaseLength] = useState({ min: "", max: "" });
   const history = useRef<Draft[]>([]),
     future = useRef<Draft[]>([]);
   const requestSerial = useRef(0),
@@ -116,6 +118,8 @@ function App() {
     setPlacementOpen(false);
     setCandidateHistoryOpen(false);
     setPlacementInputs({});
+    setLengthRules({});
+    setBaseLength({ min: "", max: "" });
     setDismissedWarning("");
     requestSerial.current++;
     if (busyRef.current) void window.arrowEditor.cancel();
@@ -266,6 +270,7 @@ function App() {
     regions: draft?.regions ?? [],
     selectedId: selectedRegion?.id ?? "",
     inputs: placementInputs,
+    lengthRules, setLengthRules, baseLength, setBaseLength,
     onSelect: setRegionId,
     onChange: (id: string, field: keyof PlacementInputs[string], value: number | undefined) =>
       setPlacementInputs((current) => ({ ...current, [id]: { ...current[id], [field]: value } })),

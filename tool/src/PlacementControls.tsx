@@ -2,20 +2,24 @@ import React, { useRef, useState } from "react";
 import type { Region } from "./types";
 
 const FIELDS = {
+  stage1: { label: "1단계 점유율", unit: "%", min: 0, max: 100 },
   fill: { label: "채움률", unit: "%", min: 0, max: 100 },
   uniformity: { label: "분포 균일도", unit: "%", min: 0, max: 100 },
-  short: { label: "짧음", unit: "%", min: 0, max: 100 },
-  medium: { label: "중간", unit: "%", min: 0, max: 100 },
-  long: { label: "김", unit: "%", min: 0, max: 100 },
   bends: { label: "굴곡 정도", unit: "/ 100", min: 0, max: 100 },
-  wrapping: { label: "감싸기 비율", unit: "%", min: 0, max: 100 },
-  participation: { label: "연쇄 참여율", unit: "%", min: 0, max: 100 },
+  wrapping: { label: "시각적 맞물림", unit: "%", min: 0, max: 100 },
+  participation: { label: "진로 막기", unit: "%", min: 0, max: 100 },
   depth: { label: "연쇄 깊이", unit: "단계", min: 1, max: undefined },
 } as const;
 type Field = keyof typeof FIELDS;
 export type PlacementValues = Partial<Record<Field, number>>;
 export type PlacementInputs = Record<string, PlacementValues>;
+export type LengthRule = { id: string; length: string; amount: string; unit: "count" | "percent" };
+export type LengthRules = Record<string, LengthRule[]>;
 type ControlsProps = {
+  lengthRules: LengthRules;
+  setLengthRules: React.Dispatch<React.SetStateAction<LengthRules>>;
+  baseLength: { min: string; max: string };
+  setBaseLength: React.Dispatch<React.SetStateAction<{ min: string; max: string }>>;
   regions: Region[];
   selectedId: string;
   inputs: PlacementInputs;
@@ -43,7 +47,7 @@ function NumericInput({
       max={definition.max}
       step={1}
       placeholder="—"
-      value={inputs[id]?.[field] ?? ""}
+      value={inputs[id]?.[field] ?? (field === "stage1" ? 30 : "")}
       onChange={(event) => {
         const input = event.currentTarget;
         if (input.value === "") onChange(id, field, undefined);
@@ -60,12 +64,15 @@ export function PlacementSettings(
   const target =
     regions.find((region) => region.id === selectedId)?.name ?? "전체 보드";
   const values = inputs[selectedId] ?? {};
-  const lengthValues = [values.short, values.medium, values.long];
-  const lengthSum = lengthValues.reduce<number>(
-    (sum, value) => sum + (value ?? 0),
-    0,
-  );
-  const hasLengths = lengthValues.some((value) => value !== undefined);
+  const conflicts = (props.lengthRules[""] ?? []).flatMap((rule) => {
+    if (rule.unit !== "count" || !rule.length || !rule.amount) return [];
+    const reserved = regions.flatMap((region) => props.lengthRules[region.id] ?? [])
+      .filter((item) => item.unit === "count" && item.length === rule.length && item.amount !== "")
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+    return reserved > Number(rule.amount)
+      ? [`${rule.length}타일: 영역 지정 ${reserved}개가 전체 ${rule.amount}개를 초과합니다.`]
+      : [];
+  });
   function field(key: Field) {
     const { label, unit, min, max } = FIELDS[key];
     return (
@@ -88,7 +95,7 @@ export function PlacementSettings(
             aria-label={`${target} ${label} 슬라이더`}
             min={min}
             max={max}
-            value={values[key] ?? min}
+            value={values[key] ?? (key === "stage1" ? 30 : min)}
             onChange={(event) =>
               onChange(selectedId, key, event.currentTarget.valueAsNumber)
             }
@@ -127,37 +134,32 @@ export function PlacementSettings(
       </label>
       <fieldset>
         <legend>공간 채우기</legend>
+        {field("stage1")}
+        <p className="placement-ui-note">선택한 보드 또는 영역의 배치 가능한 칸 기준</p>
         {field("fill")}
         {field("uniformity")}
       </fieldset>
       <fieldset>
         <legend>화살 모양</legend>
         <div className="placement-field">
-          <span>길이 구성비 (%)</span>
+          <div className="section-heading"><strong>길이 규칙</strong><button className="pill bordered" onClick={() => props.setLengthRules(current => ({ ...current, [selectedId]: [...(current[selectedId] ?? []), { id: crypto.randomUUID(), length: "", amount: "", unit: "count" }] }))}>＋ 길이 추가</button></div>
+          <p className="placement-ui-note">기초 랜덤 · 공통 길이 범위 (타일)</p>
           <div className="placement-lengths">
-            {(["short", "medium", "long"] as const).map((key) => (
-              <label key={key}>
-                {FIELDS[key].label}
-                <NumericInput
-                  {...props}
-                  id={selectedId}
-                  field={key}
-                  target={target}
-                />
-              </label>
-            ))}
+            {(["min", "max"] as const).map(key => <label key={key}>{key === "min" ? "최소" : "최대"}<input type="number" min="2" step="1" aria-label={`기초 랜덤 ${key === "min" ? "최소" : "최대"} 길이`} value={props.baseLength[key]} disabled={selectedId !== ""} placeholder="—" onChange={e => props.setBaseLength(current => ({ ...current, [key]: e.target.value }))} /></label>)}
           </div>
-          <p
-            className={
-              "placement-length-sum" +
-              (hasLengths && lengthSum !== 100 ? " incomplete" : "")
-            }
-            aria-live="polite"
-          >
-            {hasLengths
-              ? `합계 ${lengthSum} / 100%`
-              : "미설정 · 합계 100% 기준"}
-          </p>
+          <p className="placement-ui-note">{selectedId ? "전체 보드의 기초 랜덤 범위 사용" : "지정한 길이 외 나머지를 채웁니다."}</p>
+          {(props.lengthRules[selectedId] ?? []).map(rule => {
+            const update = (change: Partial<LengthRule>) => props.setLengthRules(current => ({ ...current, [selectedId]: (current[selectedId] ?? []).map(item => item.id === rule.id ? { ...item, ...change } : item) }));
+            return <div className="placement-rule" key={rule.id}>
+              <label>길이 · 타일<input type="number" min="2" step="1" value={rule.length} placeholder="—" onChange={e => update({ length: e.target.value })} /></label>
+              <label>수량<input type="number" min="0" max={rule.unit === "percent" ? 100 : undefined} step={rule.unit === "percent" ? "any" : 1} value={rule.amount} placeholder="—" onChange={e => update({ amount: e.target.value })} /></label>
+              <label>기준<select value={rule.unit} onChange={e => update({ unit: e.target.value as LengthRule["unit"] })}><option value="count">개</option><option value="percent">%</option></select></label>
+              <button className="pill bordered" aria-label="길이 규칙 삭제" onClick={() => props.setLengthRules(current => ({ ...current, [selectedId]: (current[selectedId] ?? []).filter(item => item.id !== rule.id) }))}>×</button>
+            </div>;
+          })}
+          {!(props.lengthRules[selectedId] ?? []).length && <p className="placement-ui-note">추가한 길이 없음 · 기초 랜덤</p>}
+          <p className="placement-ui-note">개수는 정확히 · %는 {selectedId ? "선택 영역" : "전체 보드"}의 화살 수 기준 목표</p>
+          {conflicts.length > 0 && <p className="placement-length-sum incomplete" role="alert">{conflicts.join(" ")}</p>}
         </div>
         {field("bends")}
         <p className="placement-ui-note">굴곡 척도는 임시입니다.</p>
@@ -280,14 +282,15 @@ export function PlacementTable(
           <thead>
             <tr>
               <th scope="col">대상</th>
+              <th scope="col">1단계 %</th>
               <th scope="col">채움률 %</th>
               <th scope="col">분포 균일도 %</th>
               <th scope="col">
-                길이 구성비 %<small>짧음 / 중간 / 김</small>
+                길이 규칙
               </th>
               <th scope="col">굴곡 정도</th>
-              <th scope="col">감싸기 비율 %</th>
-              <th scope="col">연쇄 참여율 %</th>
+              <th scope="col">시각적 맞물림 %</th>
+              <th scope="col">진로 막기 %</th>
               <th scope="col">연쇄 깊이</th>
             </tr>
           </thead>
@@ -307,14 +310,11 @@ export function PlacementTable(
                     {name}
                   </button>
                 </th>
+                <td>{value(id, name, "stage1")}</td>
                 <td>{value(id, name, "fill")}</td>
                 <td>{value(id, name, "uniformity")}</td>
                 <td>
-                  <div className="placement-table-lengths">
-                    {value(id, name, "short")}
-                    {value(id, name, "medium")}
-                    {value(id, name, "long")}
-                  </div>
+                  {(props.lengthRules[id] ?? []).length ? (props.lengthRules[id] ?? []).map(rule => <div key={rule.id}>{rule.length || "—"}타일 · {rule.amount || "—"}{rule.unit === "count" ? "개" : "% 목표"}</div>) : "기초 랜덤"}
                 </td>
                 <td>{value(id, name, "bends")}</td>
                 <td>{value(id, name, "wrapping")}</td>

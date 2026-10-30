@@ -48,8 +48,17 @@ export async function runPlacementControls({
     await page(`document.querySelectorAll('.placement-dock input').length`),
     (await page(
       `document.querySelectorAll('.placement-dock tbody tr').length`,
-    )) * 9,
+    )) * 7,
   );
+
+  assert.equal(await page(`document.querySelector('.placement-settings input[aria-label$=" 1단계 점유율"]').value`), "30");
+  assert.equal(await page(`[...document.querySelectorAll('.placement-dock input[aria-label$=" 1단계 점유율"]')].every(input=>input.value==='30')`), true);
+    await click("＋ 길이 추가");
+  assert.equal(await page(`document.querySelectorAll('.placement-rule').length`), 1);
+  await page(`(()=>{const inputs=document.querySelectorAll('.placement-rule input');for(const [input,value] of [[inputs[0],'20'],[inputs[1],'5']]){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+  await until(`document.querySelector('.placement-dock tbody tr').textContent.includes('20타일 · 5개')`);
+  await page(`document.querySelector('[aria-label="길이 규칙 삭제"]').click()`);
+  await until(`document.querySelector('.placement-dock tbody tr').textContent.includes('기초 랜덤')`);
 
   // Use the real native input setter so React receives the same event as typing.
   const region = await page(
@@ -65,11 +74,11 @@ export async function runPlacementControls({
     ),
     saved.stages.at(-1).candidates[0].versions.at(-1).draft.regions[0].name,
   );
-  await page(`(()=>{const input=document.querySelector('.placement-settings input[type=number]');
+  await page(`(()=>{const input=document.querySelector('.placement-settings input[aria-label$=" 채움률"]');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'70');
     input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await until(
-    `document.querySelectorAll('.placement-dock tbody tr')[1].querySelector('input').value === '70'`,
+    `document.querySelectorAll('.placement-dock tbody tr')[1].querySelector("input[aria-label$=' 채움률']").value === '70'`,
   );
   await page(`document.querySelectorAll('.placement-row-target')[0].click()`);
   await until(
@@ -77,7 +86,7 @@ export async function runPlacementControls({
   );
   assert.equal(
     await page(
-      `document.querySelector('.placement-settings input[type=number]').value`,
+      `document.querySelector('.placement-settings input[aria-label$=" 채움률"]').value`,
     ),
     "",
     "targets have independent temporary inputs",
@@ -106,7 +115,7 @@ export async function runPlacementControls({
   );
   assert.equal(
     await page(
-      `document.querySelector('.placement-settings input[type=number]').value`,
+      `document.querySelector('.placement-settings input[aria-label$=" 채움률"]').value`,
     ),
     "70",
   );

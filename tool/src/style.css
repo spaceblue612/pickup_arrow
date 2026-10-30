@@ -1374,3 +1374,12 @@ dialog::backdrop {
 .app-shell[inert] {
   opacity: 0.45;
 }
+.placement-rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 60px auto;
+  align-items: end;
+  gap: 4px;
+  margin-top: 10px;
+}
+.placement-rule label { display: grid; gap: 4px; color: var(--muted); }
+.placement-rule input, .placement-rule select { width: 100%; padding: 3px; }
