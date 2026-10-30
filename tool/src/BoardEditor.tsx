@@ -47,6 +47,7 @@ type Gesture = {
     | "gap"
     | "extend";
   pointerId: number;
+  button: number;
   start: Cell;
   origin: Cell;
   last: Cell;
@@ -63,6 +64,9 @@ type Gesture = {
   regionCells?: Cell[];
 };
 type Props = {
+  placementGroups?: Record<string, "existing" | "primary" | "filler">;
+  phaseView?: string;
+  phaseColors?: boolean;
   stage: Stage;
   regions: Region[];
   regionId: string;
@@ -406,16 +410,17 @@ export function BoardEditor(p: Props) {
     });
   }
   function down(e: React.PointerEvent<SVGSVGElement>) {
+    const pan = e.button === 1 || (e.button === 0 && e.shiftKey);
     if (
-      e.button !== 0 ||
+      (e.button !== 0 && e.button !== 1) ||
       gesture.current ||
-      (pendingRef.current && !e.shiftKey)
+      (pendingRef.current && !pan)
     )
       return;
     const pos = point(e.clientX, e.clientY),
       c = cell(pos),
       target = hit(pos);
-    if (p.regionPickOnly && !e.shiftKey && !p.busy) {
+    if (p.regionPickOnly && !pan && !p.busy) {
       const region = p.regions.find((region) => region.cells.some((value) => sameCell(value, c)));
       p.onSelectRegion(region?.id ?? "");
       return;
@@ -424,7 +429,7 @@ export function BoardEditor(p: Props) {
     if (!matrix) return;
     let kind: Gesture["kind"];
     let chosenOperation = operation;
-    if (e.shiftKey) kind = "pan";
+    if (pan) kind = "pan";
     else {
       if (!p.editable || p.busy || (!inside(c) && !(p.mode === "region" && edgeHover))) return;
       if (p.mode === "region" && edgeHover) kind = "region-edge";
@@ -496,6 +501,7 @@ export function BoardEditor(p: Props) {
     gesture.current = {
       kind,
       pointerId: e.pointerId,
+      button: e.button,
       start: [e.clientX, e.clientY],
       origin: c,
       last: c,
@@ -624,7 +630,7 @@ export function BoardEditor(p: Props) {
   }
   function up(e: React.PointerEvent<SVGSVGElement>) {
     const g = gesture.current;
-    if (!g || g.pointerId !== e.pointerId || e.button !== 0) return;
+    if (!g || g.pointerId !== e.pointerId || e.button !== g.button) return;
     let waitingForValidation = false;
     try {
       update(e);
@@ -779,6 +785,9 @@ export function BoardEditor(p: Props) {
             : `${operation.part === "head" ? "머리" : "꼬리"} 연장·축소`
     : "";
   function drawArrow(arrow: Arrow, ghost = false) {
+    const phase = p.placementGroups?.[arrow.id] ?? "existing";
+    const phaseColor = p.phaseColors && p.placementGroups ? { existing: "#ffffff", primary: "#ffc466", filler: "#54d7ef" }[phase] : "#ffffff";
+    const dimmed = p.placementGroups && p.phaseView && p.phaseView !== "all" && p.phaseView !== phase;
     const [x, y] = arrow.head_cell.map((v) => (v - 0.5) * 40);
     const vectors = { UP: [0, -1], DOWN: [0, 1], LEFT: [-1, 0], RIGHT: [1, 0] };
     const [dx, dy] = vectors[arrow.direction];
@@ -786,14 +795,16 @@ export function BoardEditor(p: Props) {
       <g
         key={arrow.id}
         data-arrow-id={ghost ? undefined : arrow.id}
+        data-placement-phase={ghost ? undefined : phase}
+        style={!ghost && dimmed ? { display: "none" } : undefined}
         className={!ghost && p.selected === arrow.id ? "selected-arrow" : ""}
-        opacity={!ghost && preview?.id === arrow.id ? 0.2 : 1}
+        opacity={!ghost && preview?.id === arrow.id ? 0.15 : 1}
       >
         <polyline
           points={centers(arrow.cells)}
           fill="none"
           stroke={
-            ghost ? "#ec48bd" : p.selected === arrow.id ? "#5865f2" : "#ffffff"
+            ghost ? "#ec48bd" : p.selected === arrow.id ? "#5865f2" : phaseColor
           }
           strokeWidth="6"
           strokeLinecap="round"
@@ -802,7 +813,7 @@ export function BoardEditor(p: Props) {
         <path
           d={`M${x + dx * 13},${y + dy * 13} L${x - dx * 6 - dy * 9},${y - dy * 6 + dx * 9} L${x - dx * 6 + dy * 9},${y - dy * 6 - dx * 9} Z`}
           fill={!ghost && p.free.includes(arrow.id) ? "#fff" : "#0a0d3a"}
-          stroke="#fff"
+          stroke={phaseColor}
           strokeWidth="2"
         />
         {!ghost && (
@@ -876,6 +887,7 @@ export function BoardEditor(p: Props) {
             : undefined
         }
         onPointerDown={down}
+        onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}
         onPointerMove={(e) => {
           if (!gesture.current) {
             const pos = point(e.clientX, e.clientY);
@@ -1173,7 +1185,7 @@ export function BoardEditor(p: Props) {
           >
             화면 맞춤
           </button>
-          <small>Esc 닫기 · Shift+드래그 보드 이동</small>
+          <small>Esc 닫기 · 휠 버튼 또는 Shift+드래그 보드 이동</small>
         </div>
       )}
     </div>

@@ -25,6 +25,7 @@ export class CoreHost {
         "apply_action",
         "translate_arrow",
         "reshape_arrow",
+        "editor_placement",
       ].includes(request?.operation)
     )
       throw new Error("지원하지 않는 코어 요청입니다.");

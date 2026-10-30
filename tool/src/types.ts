@@ -22,7 +22,9 @@ export type Stage = {
   arrows: Arrow[];
 };
 export type Region = { id: string; name: string; cells: Cell[] };
+export type PlacementPhase = "existing" | "primary" | "filler";
 export type Draft = {
+  placementGroups?: Record<string, PlacementPhase>;
   stage: Stage;
   regions: Region[];
   targets: Record<string, number | null>;
@@ -57,7 +59,9 @@ export type Response = {
   analysis?: Analysis;
   action?: { event: string; stage: Stage };
   edit?: { accepted: boolean; event: string; errors: string[]; stage: Stage };
+  placement?: { groups?: Record<string, PlacementPhase>; deviations?: string[]; attempts?: number; error: string; stage: Stage; primary: PlacementMetrics; final: PlacementMetrics; primary_target: number; primary_added: number; filler_target: number; filler_added: number };
 };
+export type PlacementMetrics = { arrow_count: number; occupied_tiles: number; contact_count: number; blocked_count: number; blocker_ratio?: number; turn_ratio: number };
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export interface EditorAPI {
   bootstrap(): Promise<
@@ -77,6 +81,7 @@ export interface EditorAPI {
     arrow_id?: string;
     offset?: Cell;
     cells?: Cell[];
+    placement?: { cells: Cell[]; stage1: number; fill: number; min_length: number; max_length: number; seed: number; settings?: Record<string, unknown> };
   }): Promise<Result<Response>>;
   cancel(): Promise<Result<void>>;
   settings(settings: Settings): Promise<Result<Settings>>;

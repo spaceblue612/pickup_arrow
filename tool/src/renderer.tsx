@@ -85,11 +85,13 @@ function App() {
     [step, setStep] = useState(0),
     [view, setView] = useState("work");
   const [links, setLinks] = useState(true);
+  const [phaseView, setPhaseView] = useState("all");
   const [placementOpen, setPlacementOpen] = useState(false);
   const [candidateHistoryOpen, setCandidateHistoryOpen] = useState(false);
-  // Temporary UI inputs only: excluded from Draft, recovery, and core requests.
+  // Placement settings are temporary and do not modify the saved draft.
   const [placementInputs, setPlacementInputs] = useState<PlacementInputs>({});
   const [lengthRules, setLengthRules] = useState<LengthRules>({});
+  const [automaticPlacement, setAutomaticPlacement] = useState(false);
   const [baseLength, setBaseLength] = useState({ min: "", max: "" });
   const history = useRef<Draft[]>([]),
     future = useRef<Draft[]>([]);
@@ -115,6 +117,7 @@ function App() {
     setStep(0);
   }
   function loadDraft(next: Draft, candidate: string | null, isDirty = false) {
+    setPhaseView("all");
     setPlacementOpen(false);
     setCandidateHistoryOpen(false);
     setPlacementInputs({});
@@ -271,10 +274,62 @@ function App() {
     selectedId: selectedRegion?.id ?? "",
     inputs: placementInputs,
     lengthRules, setLengthRules, baseLength, setBaseLength,
+    automaticPlacement, setAutomaticPlacement,
+    busy: busy || !draft,
+    onGenerate: () => void generatePlacement(),
     onSelect: setRegionId,
     onChange: (id: string, field: keyof PlacementInputs[string], value: number | undefined) =>
       setPlacementInputs((current) => ({ ...current, [id]: { ...current[id], [field]: value } })),
   };
+  async function generatePlacement() {
+    if (!draftRef.current || busyRef.current) return;
+    const source = clone(draftRef.current);
+    const id = selectedRegion?.id ?? "";
+    const values = placementInputs[id] ?? {};
+    const min = baseLength.min === "" ? 2 : Number(baseLength.min);
+    const max = baseLength.max === "" ? 4 : Number(baseLength.max);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 2 || max < min || max > 10000) {
+      setError("기초 길이 범위는 2 이상의 정수이며 최소가 최대보다 작거나 같아야 합니다.");
+      return;
+    }
+    if ((lengthRules[id] ?? []).some(rule => !Number.isInteger(Number(rule.length)) || Number(rule.length) < 2 || !rule.amount || Number(rule.amount) < 0 || (rule.unit === "count" && !Number.isInteger(Number(rule.amount))) || (rule.unit === "percent" && Number(rule.amount) > 100))) {
+      setError("길이 규칙의 길이와 수량을 확인해 주세요.");
+      return;
+    }
+    const cells: Cell[] = selectedRegion ? clone(selectedRegion.cells) : Array.from({ length: source.stage.grid_size[0] * source.stage.grid_size[1] }, (_, i) => [i % source.stage.grid_size[0] + 1, Math.floor(i / source.stage.grid_size[0]) + 1]);
+    const token = ++requestSerial.current;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const response = unwrap(await window.arrowEditor.core({ operation: "editor_placement", stage: source.stage, placement: { cells, stage1: values.stage1 ?? 30, fill: values.fill ?? 70, min_length: min, max_length: max, seed: Math.floor(Math.random() * 2147483647), settings: { ...values, scopes: id ? [] : source.regions.filter(region => Object.keys(placementInputs[region.id] ?? {}).length || (lengthRules[region.id] ?? []).length).map(region => ({ cells: region.cells, values: placementInputs[region.id] ?? {}, rules: (lengthRules[region.id] ?? []).map(rule => ({ length: Number(rule.length), amount: Number(rule.amount), unit: rule.unit })) })), rules: (lengthRules[id] ?? []).map(rule => ({ length: Number(rule.length), amount: Number(rule.amount), unit: rule.unit })) } } }));
+      if (token !== requestSerial.current || !same(draftRef.current, source)) return;
+      if (!response.validation.valid) throw Error(response.validation.errors.join(" / "));
+      const result = response.placement;
+      if (!result || result.error) throw Error(result?.error || "생성 결과가 없습니다.");
+      const metrics = `1단계 ${result.primary_added}/${result.primary_target}칸 · 접점 ${result.primary.contact_count} · 굴곡 ${(result.primary.turn_ratio * 100).toFixed(1)}% · 막힌 화살 ${result.primary.blocked_count} · 다른 화살 막기 ${((result.primary.blocker_ratio ?? 0) * 100).toFixed(1)}%\n2단계 ${result.filler_added}/${result.filler_target}칸 · 최종 ${result.final.occupied_tiles}칸 · 접점 ${result.final.contact_count} · 막힌 화살 ${result.final.blocked_count}`;
+      const deviations = result.deviations ?? [];
+      if (automaticPlacement && (deviations.length > 0 || result.primary_added !== result.primary_target || result.filler_added !== result.filler_target)) {
+        setError(`조건 미달로 적용하지 않았습니다. ${result.attempts ?? 1}회 재시도\n${metrics}\n${deviations.join("\n")}`);
+        return;
+      }
+      if ((deviations.length > 0 || result.primary_added !== result.primary_target || result.filler_added !== result.filler_target) && !window.confirm(`요청한 칸 수와 실제 결과가 다릅니다.\n${metrics}\n${deviations.join("\n")}\n이 결과를 적용하시겠습니까? 취소하면 다시 생성할 수 있습니다.`)) {
+        setMessage("생성 결과를 적용하지 않았습니다. 다시 생성해 주세요.");
+        return;
+      }
+      const changed = clone(source);
+      changed.stage = result.stage;
+      changed.placementGroups = result.groups;
+      setPhaseView("all");
+      commit(changed);
+      setMessage(`${metrics}\n${deviations.join("\n")}\n시도 ${result.attempts ?? 1}회 · 전체 보드 해결 가능 · 실행 취소 가능`);
+    } catch (e) {
+      if (token === requestSerial.current) fail(e);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
   const regionArrows =
     selectedRegion && board
       ? board.arrows.filter((a) =>
@@ -641,6 +696,27 @@ function App() {
     commit(next);
     setSelected("");
   }
+  function clearArrows(inRegion: boolean) {
+    if (!draftRef.current || busyRef.current || playback || recovery) return;
+    const next = clone(draftRef.current);
+    const region = next.regions.find(item => item.id === regionId);
+    if (inRegion && !region) return;
+    const cells = new Set(region?.cells.map(key));
+    const removed = next.stage.arrows.filter(arrow => !inRegion || arrow.cells.every(cell => cells.has(key(cell))));
+    if (!removed.length) {
+      setMessage("삭제할 화살이 없습니다. 영역 삭제는 몸체 전체가 영역 안에 있는 화살만 지웁니다.");
+      return;
+    }
+    const ids = new Set(removed.map(arrow => arrow.id));
+    next.stage.arrows = next.stage.arrows.filter(arrow => !ids.has(arrow.id));
+    for (const id of ids) {
+      delete next.roles[id];
+      if (next.placementGroups) delete next.placementGroups[id];
+    }
+    commit(next);
+    setSelected("");
+    setMessage(`${inRegion ? region!.name : "전체 보드"}의 화살 ${removed.length}개를 지웠습니다. 실행 취소로 되돌릴 수 있습니다.`);
+  }
   function updateTarget(name: string, value: string) {
     if (!draft) return;
     const number = value === "" ? null : Number(value);
@@ -975,6 +1051,8 @@ function App() {
                     </div>
                   </div>
                   <div className="editor-tools">
+                    <button data-testid="clear-board-arrows" disabled={busy || Boolean(playback) || Boolean(recovery) || !draft.stage.arrows.length} onClick={() => clearArrows(false)}>전체 화살 지우기</button>
+                    <button data-testid="clear-region-arrows" title="몸체 전체가 선택 영역 안에 있는 화살만 삭제합니다." disabled={busy || Boolean(playback) || Boolean(recovery) || !selectedRegion || !draft.stage.arrows.length} onClick={() => clearArrows(true)}>선택 영역 화살 지우기</button>
                     <button
                       disabled={!history.current.length || busy}
                       onClick={() => undo()}
@@ -1028,19 +1106,29 @@ function App() {
                       </button>
                     </div>
                   )}
+                  {draft.placementGroups && <div className="board-status" data-testid="placement-phase-controls" aria-label="생성 단계 구분">
+                    <div role="group" aria-label="생성 단계 보기">
+                      {(["all", "primary", "filler", "existing"] as const).map((phase, index) => <button key={phase} className={"pill compact " + (phaseView === phase ? "selected" : "")} aria-pressed={phaseView === phase} onClick={() => { setPhaseView(phase); setSelected(""); }}>{["전체", "1단계만", "2단계만", "기존 화살만"][index]}</button>)}
+                    </div>
+                    {(["existing", "primary", "filler"] as const).map((phase, index) => <span key={phase} style={{ color: ["#ffffff", "#ffc466", "#54d7ef"][index] }}>{["기존", "1단계", "2단계"][index]} {board?.arrows.filter(arrow => (draft.placementGroups?.[arrow.id] ?? "existing") === phase).length}개</span>)}
+                    <span>전체 보기에서는 단계별 색상으로 구분합니다.</span>
+                  </div>}
                   <div className="canvas-wrap">
                     <BoardEditor
                       key={draft.stage.id}
                       stage={board!}
+                      placementGroups={draft.placementGroups}
+                      phaseView={phaseView}
+                      phaseColors={true}
                       regions={draft.regions}
                       regionId={regionId}
                       selected={selected}
                       mode={mode}
                       analysis={analysis}
                       free={free}
-                      links={links}
+                      links={links && (!draft.placementGroups || phaseView === "all")}
                       busy={busy}
-                      editable={!playback && !recovery && !placementOpen}
+                      editable={!playback && !recovery && !placementOpen && (!draft.placementGroups || phaseView === "all")}
                       regionPickOnly={placementOpen}
                       onSelect={setSelected}
                       onMode={(next) => setMode(workspaceMode === "regions" && next === "auto" ? "region" : next)}

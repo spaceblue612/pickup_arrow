@@ -27,6 +27,13 @@ export async function runPlacementControls({
   await until(
     `document.querySelector('[data-testid="placement-dock"]').open && !document.querySelector('[data-testid="candidate-history"]').open`,
   );
+  // Middle-button panning must also work while clicks select placement regions.
+  const beforePan = await page(`document.querySelector('svg.editable-board').getAttribute('viewBox')`);
+  const panStart = await page(`(()=>{const r=document.querySelector('svg.editable-board').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`);
+  window.webContents.sendInputEvent({ type: "mouseDown", ...panStart, button: "middle", clickCount: 1 });
+  window.webContents.sendInputEvent({ type: "mouseMove", x: panStart.x + 60, y: panStart.y + 40, button: "middle" });
+  window.webContents.sendInputEvent({ type: "mouseUp", x: panStart.x + 60, y: panStart.y + 40, button: "middle", clickCount: 1 });
+  await until(`document.querySelector('svg.editable-board').getAttribute('viewBox') !== ${JSON.stringify(beforePan)}`);
   assert.equal(
     await page(`document.querySelectorAll('.placement-dock tbody tr').length`),
     saved.stages.at(-1).candidates[0].versions.at(-1).draft.regions.length + 1,
@@ -41,14 +48,14 @@ export async function runPlacementControls({
     await page(
       `document.querySelector('[data-testid="placement-generate"]').disabled`,
     ),
-    true,
-    "generation remains disconnected in the UI-only phase",
+    false,
+    "generation is available",
   );
   assert.equal(
     await page(`document.querySelectorAll('.placement-dock input').length`),
     (await page(
       `document.querySelectorAll('.placement-dock tbody tr').length`,
-    )) * 7,
+    )) * 6 + 1,
   );
 
   assert.equal(await page(`document.querySelector('.placement-settings input[aria-label$=" 1단계 점유율"]').value`), "30");
@@ -218,7 +225,23 @@ export async function runPlacementControls({
     recovery,
     "UI inputs never create recovery changes",
   );
+  const fixture = saved.stages.at(-1).candidates[0].versions.at(-1).draft;
+  const regionCells = new Set(fixture.regions[0].cells.map(cell => cell.join(",")));
+  const keptIds = fixture.stage.arrows.filter(arrow => !arrow.cells.every(cell => regionCells.has(cell.join(",")))).map(arrow => arrow.id).sort();
+  await page(`document.querySelector('[data-testid="placement-open"]').click()`);
+  await page(`document.querySelectorAll('.placement-row-target')[1].click()`);
+  await page(`document.querySelector('[data-testid="clear-region-arrows"]').click()`);
+  await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${keptIds.length}`);
+  assert.deepEqual(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].map(node=>node.dataset.arrowId).sort()`), keptIds);
+  await click("↶ 실행 취소");
+  await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${fixture.stage.arrows.length}`);
+  await page(`document.querySelector('[data-testid="clear-board-arrows"]').click()`);
+  await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === 0`);
+  await click("↶ 실행 취소");
+  await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${fixture.stage.arrows.length}`);
+  assert.deepEqual(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id] polyline')].map(node=>node.getAttribute('points'))`), original.shapes);
   return {
+    bulkDeleteUndo: true,
     independentInputs: true,
     regionSelection: true,
     noPersistence: true,

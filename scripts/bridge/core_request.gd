@@ -6,6 +6,7 @@ const BOARD_STATE := preload("res://scripts/board_state.gd")
 const CODEC := preload("res://scripts/bridge/stage_json_codec.gd")
 const ANALYZER := preload("res://scripts/dependency_analyzer.gd")
 const ARROW_EDIT := preload("res://scripts/bridge/arrow_edit.gd")
+const EDITOR_PLACEMENT := preload("res://scripts/editor_placement.gd")
 const PROTOCOL_VERSION := 1
 
 
@@ -19,7 +20,7 @@ static func handle_request(request: Variant) -> Dictionary:
 	if not (version is int or version is float) or version != PROTOCOL_VERSION:
 		return failure(request_id, "unsupported_version", "protocol_version must be 1", 2)
 	var operation: Variant = request.get("operation")
-	if not (operation is String) or operation not in ["validate_stage", "apply_action", "analyze_stage", "translate_arrow", "reshape_arrow"]:
+	if not (operation is String) or operation not in ["validate_stage", "apply_action", "analyze_stage", "translate_arrow", "reshape_arrow", "editor_placement"]:
 		return failure(request_id, "unsupported_operation", "Unsupported operation", 2)
 	if not request.has("stage"):
 		return failure(request_id, "invalid_request", "stage is required", 2)
@@ -49,6 +50,8 @@ static func handle_request(request: Variant) -> Dictionary:
 	if errors.is_empty():
 		var validation: Dictionary = STAGE_VALIDATOR.validate_stage(stage, minimum_arrow_length)
 		errors = validation["errors"]
+		if operation == "editor_placement" and stage["arrows"].is_empty():
+			errors.erase("At least one arrow is required")
 	var response := {
 		"protocol_version": PROTOCOL_VERSION,
 		"request_id": request_id,
@@ -56,6 +59,29 @@ static func handle_request(request: Variant) -> Dictionary:
 		"validation": {"valid": errors.is_empty(), "errors": errors},
 	}
 	if not errors.is_empty() or operation == "validate_stage":
+		return _success(response)
+	if operation == "editor_placement":
+		var options: Variant = request.get("placement")
+		if not (options is Dictionary) or not (options.get("cells") is Array):
+			return failure(request_id, "invalid_request", "placement cells are required", 2)
+		var cells: Array = []
+		for cell: Variant in options["cells"]:
+			if not (cell is Array) or cell.size() != 2 or not (cell[0] is int or cell[0] is float) or not (cell[1] is int or cell[1] is float) or cell[0] != int(cell[0]) or cell[1] != int(cell[1]):
+				return failure(request_id, "invalid_request", "Invalid placement cell", 2)
+			cells.append(Vector2i(int(cell[0]), int(cell[1])))
+		for field: String in ["stage1", "fill", "min_length", "max_length", "seed"]:
+			if not (options.get(field) is int or options.get(field) is float) or not is_finite(float(options[field])):
+				return failure(request_id, "invalid_request", "Invalid placement option: " + field, 2)
+		var generated := EDITOR_PLACEMENT.generate(stage, cells, float(options["stage1"]), float(options["fill"]), int(options["min_length"]), int(options["max_length"]), int(options["seed"]), options.get("settings", {}))
+		var retries := 0
+		while generated.get("error", "") == "" and (not generated.get("deviations", []).is_empty() or generated.get("primary_added", 0) != generated.get("primary_target", 0) or generated.get("filler_added", 0) != generated.get("filler_target", 0)) and retries < 7:
+			retries += 1
+			print("Placement retry %d: %s" % [retries, str(generated.get("deviations", []))])
+			var candidate := EDITOR_PLACEMENT.generate(stage, cells, float(options["stage1"]), float(options["fill"]), int(options["min_length"]), int(options["max_length"]), int(options["seed"]) + retries, options.get("settings", {}))
+			if candidate.get("error", "") == "" and candidate.get("deviations", []).size() <= generated.get("deviations", []).size():
+				generated = candidate
+		generated["attempts"] = retries + 1
+		response["placement"] = generated
 		return _success(response)
 	if operation == "translate_arrow":
 		response["edit"] = _translate_arrow(stage, request["arrow_id"], offset, minimum_arrow_length)

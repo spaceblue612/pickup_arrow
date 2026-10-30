@@ -82,3 +82,15 @@ test("unknown operations and missing executable are surfaced, not simulated", as
   );
   assert.equal(host.busy, false);
 });
+
+test("editor placement runs both phases through the Godot host", async () => {
+  const source = { id: "STAGE-TEST", grid_size: [8, 8], blocked_cells: [], arrows: [] };
+  const cells = Array.from({ length: 64 }, (_, i) => [i % 8 + 1, Math.floor(i / 8) + 1]);
+  const response = await new CoreHost().run({ operation: "editor_placement", stage: source, stage_contract: "authoring_v1", placement: { cells, stage1: 30, fill: 50, min_length: 2, max_length: 3, seed: 42 } }, settings);
+  assert.equal(response.validation.valid, true);
+  assert.equal(response.placement.error, "");
+  assert.ok(response.placement.primary_added > 0);
+  assert.ok(response.placement.filler_added > 0);
+  assert.equal(response.placement.final.solvable, true);
+  assert.deepEqual(source.arrows, []);
+});

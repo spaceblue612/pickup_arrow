@@ -7,7 +7,8 @@ const FIELDS = {
   uniformity: { label: "분포 균일도", unit: "%", min: 0, max: 100 },
   bends: { label: "굴곡 정도", unit: "/ 100", min: 0, max: 100 },
   wrapping: { label: "시각적 맞물림", unit: "%", min: 0, max: 100 },
-  participation: { label: "진로 막기", unit: "%", min: 0, max: 100 },
+  blocker: { label: "다른 화살을 막는 화살", unit: "%", min: 0, max: 100 },
+  participation: { label: "막힌 화살", unit: "%", min: 0, max: 100 },
   depth: { label: "연쇄 깊이", unit: "단계", min: 1, max: undefined },
 } as const;
 type Field = keyof typeof FIELDS;
@@ -25,6 +26,10 @@ type ControlsProps = {
   inputs: PlacementInputs;
   onSelect: (id: string) => void;
   onChange: (id: string, field: Field, value: number | undefined) => void;
+  onGenerate: () => void;
+  busy: boolean;
+  automaticPlacement: boolean;
+  setAutomaticPlacement: (value: boolean) => void;
 };
 
 function NumericInput({
@@ -78,7 +83,7 @@ export function PlacementSettings(
     return (
       <div className="placement-field" key={key}>
         <div className="placement-field-heading">
-          <span>{label}</span>
+          <span>{(["participation", "blocker"] as string[]).includes(key) && <input type="checkbox" aria-label={`${target} ${label} 사용`} checked={values[key] !== undefined} onChange={event => onChange(selectedId, key, event.target.checked ? 30 : undefined)} />}{label}</span>
           <span className="placement-number">
             <NumericInput
               {...props}
@@ -116,7 +121,7 @@ export function PlacementSettings(
           닫기
         </button>
       </div>
-      <p className="placement-ui-note">UI 준비 · 생성 기능 미연결</p>
+      <p className="placement-ui-note">1단계 배치 후 남은 빈칸을 채웁니다. 채움률 미입력 시 70%, 길이 미입력 시 2~4칸을 사용합니다.</p>
       <label className="placement-target">
         조절 대상
         <select
@@ -162,16 +167,16 @@ export function PlacementSettings(
           {conflicts.length > 0 && <p className="placement-length-sum incomplete" role="alert">{conflicts.join(" ")}</p>}
         </div>
         {field("bends")}
-        <p className="placement-ui-note">굴곡 척도는 임시입니다.</p>
+        <p className="placement-ui-note">굴곡 비율 = 꺾임 횟수 ÷ 1단계 점유 타일 수</p>
       </fieldset>
       <fieldset>
         <legend>맞물림과 연쇄</legend>
-        {field("wrapping")}
+        <p>시각적 맞물림은 생성 결과의 접점 수로 표시합니다.</p>
         {field("participation")}
-        {field("depth")}
+        {field("blocker")}
       </fieldset>
       <p className="placement-ui-note">
-        입력값은 임시이며 저장·실제 배치에 반영되지 않습니다.
+        미설정 항목은 자유 생성합니다. 조건 미달 시 요청값과 실제값을 비교해 적용 여부를 선택합니다.
       </p>
     </section>
   );
@@ -265,13 +270,15 @@ export function PlacementTable(
           생성 대상: <strong>{target}</strong>
         </span>
         <span className="placement-ui-note" id="placement-generate-status">
-          생성 기능 준비 중
+          {props.busy ? "생성 중" : "생성 후 실행 취소 가능"}
         </span>
+        <label><input type="checkbox" checked={props.automaticPlacement} onChange={event => props.setAutomaticPlacement(event.target.checked)} />자동 재시도 · 미달 시 적용 안 함</label>
         <button
           className="pill primary"
           data-testid="placement-generate"
           aria-describedby="placement-generate-status"
-          disabled
+          disabled={props.busy}
+          onClick={props.onGenerate}
         >
           랜덤 생성
         </button>
@@ -289,9 +296,9 @@ export function PlacementTable(
                 길이 규칙
               </th>
               <th scope="col">굴곡 정도</th>
-              <th scope="col">시각적 맞물림 %</th>
-              <th scope="col">진로 막기 %</th>
-              <th scope="col">연쇄 깊이</th>
+              <th scope="col">시각적 맞물림</th>
+              <th scope="col">막힌 화살 %</th>
+              <th scope="col">다른 화살 막기 %</th>
             </tr>
           </thead>
           <tbody>
@@ -317,9 +324,9 @@ export function PlacementTable(
                   {(props.lengthRules[id] ?? []).length ? (props.lengthRules[id] ?? []).map(rule => <div key={rule.id}>{rule.length || "—"}타일 · {rule.amount || "—"}{rule.unit === "count" ? "개" : "% 목표"}</div>) : "기초 랜덤"}
                 </td>
                 <td>{value(id, name, "bends")}</td>
-                <td>{value(id, name, "wrapping")}</td>
+                <td>결과 접점 수</td>
                 <td>{value(id, name, "participation")}</td>
-                <td>{value(id, name, "depth")}</td>
+                <td>{value(id, name, "blocker")}</td>
               </tr>
             ))}
           </tbody>
