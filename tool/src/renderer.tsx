@@ -1,6 +1,7 @@
+import { nextRegionName, repairRegions } from "./region-names.mjs";
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { summarizeCells } from "./board-metrics.mjs";
+import { summarizeCells, summarizePlacement } from "./board-metrics.mjs";
 import { TEXT_SIZE } from "./text-size.mjs";
 import { BoardEditor } from "./BoardEditor";
 import { EditorNotice } from "./EditorNotice";
@@ -15,6 +16,7 @@ import type {
   Direction,
   Stage,
   Draft,
+  PlacementSettingsSnapshot,
   Library,
   Recovery,
   Settings,
@@ -85,10 +87,13 @@ function App() {
     [step, setStep] = useState(0),
     [view, setView] = useState("work");
   const [links, setLinks] = useState(true);
+  const [showArrowIds, setShowArrowIds] = useState(false);
   const [phaseView, setPhaseView] = useState("all");
+  const [placementTableOpen, setPlacementTableOpen] = useState(false);
   const [placementOpen, setPlacementOpen] = useState(false);
+  const [candidatePreview, setCandidatePreview] = useState<{ id: string; name: string; draft: Draft } | null>(null);
   const [candidateHistoryOpen, setCandidateHistoryOpen] = useState(false);
-  // Placement settings are temporary and do not modify the saved draft.
+  // Placement settings belong to each saved draft/version.
   const [placementInputs, setPlacementInputs] = useState<PlacementInputs>({});
   const [lengthRules, setLengthRules] = useState<LengthRules>({});
   const [automaticPlacement, setAutomaticPlacement] = useState(false);
@@ -116,13 +121,26 @@ function App() {
     setPlayback(null);
     setStep(0);
   }
+  function restorePlacementSettings(value: Draft) {
+    const saved = value.placementSettings;
+    setPlacementInputs(clone(saved?.inputs ?? {}));
+    setLengthRules(clone(saved?.lengthRules ?? {}));
+    setBaseLength(clone(saved?.baseLength ?? { min: "", max: "" }));
+    setAutomaticPlacement(saved?.automaticPlacement ?? false);
+  }
+  function updatePlacementSettings(change: Partial<PlacementSettingsSnapshot>) {
+    if (!draftRef.current || candidatePreview || busyRef.current) return;
+    const next = clone(draftRef.current);
+    next.placementSettings = clone({ inputs: placementInputs, lengthRules, baseLength, automaticPlacement, ...change });
+    commit(next);
+  }
   function loadDraft(next: Draft, candidate: string | null, isDirty = false) {
     setPhaseView("all");
+    setCandidatePreview(null);
     setPlacementOpen(false);
+    setPlacementTableOpen(false);
     setCandidateHistoryOpen(false);
-    setPlacementInputs({});
-    setLengthRules({});
-    setBaseLength({ min: "", max: "" });
+    restorePlacementSettings(next);
     setDismissedWarning("");
     requestSerial.current++;
     if (busyRef.current) void window.arrowEditor.cancel();
@@ -146,6 +164,7 @@ function App() {
     future.current = [];
     draftRef.current = next;
     setDraft(next);
+    restorePlacementSettings(next);
     setDirty(true);
     resetAnalysis();
     setHistoryTick((t) => t + 1);
@@ -157,6 +176,7 @@ function App() {
     to.push(clone(draftRef.current));
     draftRef.current = from.pop()!;
     setDraft(draftRef.current);
+    restorePlacementSettings(draftRef.current);
     setDirty(true);
     resetAnalysis();
     setHistoryTick((t) => t + 1);
@@ -261,25 +281,31 @@ function App() {
   }, []);
   const entry = library.stages.find((s) => s.id === draft?.stage.id),
     candidate = entry?.candidates.find((c) => c.id === candidateId);
-  const board = playback ?? draft?.stage,
+  const board = candidatePreview?.draft.stage ?? playback ?? draft?.stage,
     free = playback ? playFree : (analysis?.available_arrow_ids ?? []),
     selectedArrow = draft?.stage.arrows.find((a) => a.id === selected);
-  const selectedRegion = draft?.regions.find((r) => r.id === regionId);
+  const controlDraft = candidatePreview?.draft ?? draft;
+  const selectedRegion = controlDraft?.regions.find((r) => r.id === regionId);
   function changePlacementOpen(open: boolean) {
     setPlacementOpen(open);
-    if (open) setCandidateHistoryOpen(false);
+
   }
   const placementControls = {
-    regions: draft?.regions ?? [],
+    stats: controlDraft ? summarizePlacement(controlDraft.stage, selectedRegion?.cells, controlDraft.placementGroups) : undefined,
+    regions: controlDraft?.regions ?? [],
     selectedId: selectedRegion?.id ?? "",
-    inputs: placementInputs,
-    lengthRules, setLengthRules, baseLength, setBaseLength,
-    automaticPlacement, setAutomaticPlacement,
-    busy: busy || !draft,
+    inputs: candidatePreview ? candidatePreview.draft.placementSettings?.inputs ?? {} : placementInputs,
+    lengthRules: candidatePreview ? candidatePreview.draft.placementSettings?.lengthRules ?? {} : lengthRules,
+    setLengthRules: ((value) => updatePlacementSettings({ lengthRules: typeof value === "function" ? value(lengthRules) : value })) as React.Dispatch<React.SetStateAction<LengthRules>>,
+    baseLength: candidatePreview ? candidatePreview.draft.placementSettings?.baseLength ?? { min: "", max: "" } : baseLength,
+    setBaseLength: ((value) => updatePlacementSettings({ baseLength: typeof value === "function" ? value(baseLength) : value })) as React.Dispatch<React.SetStateAction<{ min: string; max: string }>>,
+    automaticPlacement: candidatePreview ? candidatePreview.draft.placementSettings?.automaticPlacement ?? false : automaticPlacement,
+    setAutomaticPlacement: (value: boolean) => updatePlacementSettings({ automaticPlacement: value }),
+    busy: busy || !draft || Boolean(candidatePreview),
     onGenerate: () => void generatePlacement(),
     onSelect: setRegionId,
     onChange: (id: string, field: keyof PlacementInputs[string], value: number | undefined) =>
-      setPlacementInputs((current) => ({ ...current, [id]: { ...current[id], [field]: value } })),
+      updatePlacementSettings({ inputs: { ...placementInputs, [id]: { ...placementInputs[id], [field]: value } } }),
   };
   async function generatePlacement() {
     if (!draftRef.current || busyRef.current) return;
@@ -384,7 +410,7 @@ function App() {
       if (!c) {
         c = {
           id: uuid(),
-          name: "후보 " + (stage.candidates.length + 1),
+          name: "후보 " + (Math.max(0, ...stage.candidates.map(item => Number(/^후보 (\d+)$/.exec(item.name)?.[1] ?? 0))) + 1),
           versions: [],
         };
         stage.candidates.push(c);
@@ -407,6 +433,29 @@ function App() {
     } finally {
       setSaving(false);
     }
+  }
+  async function deleteCandidate(id: string | null) {
+    if (!id || !draftRef.current || saving || busyRef.current) return;
+    const stageId = draftRef.current.stage.id;
+    const target = libraryRef.current.stages.find(stage => stage.id === stageId)?.candidates.find(item => item.id === id);
+    if (!target || !window.confirm(`${target.name} 후보와 저장 이력 ${target.versions.length}개를 완전히 삭제하시겠습니까? 되돌릴 수 없습니다.`)) return;
+    setSaving(true);
+    try {
+      const next = unwrap(await window.arrowEditor.deleteCandidate(stageId, id, libraryRef.current.revision));
+      libraryRef.current = next;
+      setLibrary(next);
+      const stage = next.stages.find(item => item.id === stageId)!;
+      setCandidatePreview(null);
+      if (draftRef.current?.stage.id === stageId && candidateId === id && dirty) {
+        setCandidateId(null);
+      } else if (draftRef.current?.stage.id === stageId && candidateId === id) {
+        const replacement = stage.candidates[0];
+        loadDraft(replacement?.versions.at(-1)?.draft ?? blank(stageId), replacement?.id ?? null);
+        setCandidateHistoryOpen(true);
+      }
+      setMessage(`${target.name} 후보와 저장 이력을 완전히 삭제했습니다.${dirty && candidateId === id ? " 미저장 작업은 현재 보드에 보존했습니다." : ""}`);
+    } catch (e) { fail(e); }
+    finally { setSaving(false); }
   }
   async function createStage(source?: Stage) {
     if (saving) return;
@@ -661,7 +710,7 @@ function App() {
       return;
     }
     const id = "R-" + uuid().slice(0, 6);
-    next.regions.push({ id, name: "영역 " + (next.regions.length + 1), cells });
+    next.regions.push({ id, name: nextRegionName(next.regions), cells });
     commit(next);
     setRegionId(id);
   }
@@ -686,7 +735,11 @@ function App() {
       } else region.cells = region.cells.filter((c) => !selected.has(key(c)));
       if (JSON.stringify(region.cells) === JSON.stringify(draftRef.current.regions.find((r) => r.id === regionId)?.cells)) return;
     }
+    const emptyIds = new Set(next.regions.filter(region => mode === "remove-region" && region.id === regionId && !region.cells.length).map(region => region.id));
+    next.regions = next.regions.filter(region => !emptyIds.has(region.id));
+    for (const role of Object.values(next.roles)) if (emptyIds.has(role.region)) role.region = "";
     commit(next);
+    if (emptyIds.has(regionId)) setRegionId("");
   }
   function deleteArrow(id: string) {
     if (!draftRef.current) return;
@@ -695,6 +748,30 @@ function App() {
     delete next.roles[id];
     commit(next);
     setSelected("");
+  }
+  function repairRegionList() {
+    if (!draftRef.current || busyRef.current || playback || recovery) return;
+    const next = clone(draftRef.current);
+    next.regions = repairRegions(next.regions);
+    const ids = new Set(next.regions.map(region => region.id));
+    for (const role of Object.values(next.roles)) if (role.region && !ids.has(role.region)) role.region = "";
+    if (same(next, draftRef.current)) return;
+    commit(next);
+    if (!ids.has(regionId)) setRegionId("");
+    setMessage("빈 영역과 중복 이름을 정리했습니다. 실행 취소할 수 있습니다.");
+  }
+  function deleteRegion() {
+    if (!draftRef.current || busyRef.current || playback || recovery) return;
+    const region = draftRef.current.regions.find(item => item.id === regionId);
+    if (!region) return;
+    const next = clone(draftRef.current);
+    next.regions = next.regions.filter(item => item.id !== region.id);
+    for (const role of Object.values(next.roles)) {
+      if (role.region === region.id) role.region = "";
+    }
+    commit(next);
+    setRegionId("");
+    setMessage(`${region.name} 영역을 삭제했습니다. 화살은 유지되며 실행 취소할 수 있습니다.`);
   }
   function clearArrows(inRegion: boolean) {
     if (!draftRef.current || busyRef.current || playback || recovery) return;
@@ -898,7 +975,7 @@ function App() {
             <div className="page-actions">
               <button
                 className="pill bordered"
-                disabled={!draft || saving}
+                disabled={!draft || saving || Boolean(candidatePreview)}
                 onClick={() => void save(true)}
               >
                 새 후보로 저장
@@ -906,7 +983,7 @@ function App() {
               <button
                 className="pill primary"
                 data-testid="save"
-                disabled={!draft || saving}
+                disabled={!draft || saving || Boolean(candidatePreview)}
                 onClick={() => void save()}
               >
                 {saving ? "저장 중…" : "저장 ↗"}
@@ -1016,13 +1093,13 @@ function App() {
                     <button
                       className="pill bordered"
                       data-testid="analyze"
-                      disabled={busy || !draft.stage.arrows.length}
+                      disabled={busy || Boolean(candidatePreview) || !draft.stage.arrows.length}
                       onClick={() => void analyze()}
                     >
                       {busy ? "계산 중…" : "Godot 검증·분석"}
                     </button>
                   </div>
-                  <div className="toolbar">
+                  <div className="toolbar" inert={Boolean(candidatePreview)}>
                     <div className="tool-group" aria-label="작업 모드">
                       {([ ["arrows", "화살 배치"], ["regions", "영역 관리"] ] as const).map(([value, label]) => (
                         <button key={value} className={"pill compact " + (!placementOpen && workspaceMode === value ? "selected" : "")}
@@ -1034,7 +1111,7 @@ function App() {
                       <button
                         className={"pill compact " + (placementOpen ? "selected" : "")}
                         aria-pressed={placementOpen}
-                        aria-controls="placement-dock"
+                        aria-controls="placement-settings"
                         disabled={busy || Boolean(playback)}
                         data-testid="placement-open"
                         onClick={() => changePlacementOpen(!placementOpen)}
@@ -1048,9 +1125,11 @@ function App() {
                         <button key={m} className={"pill compact " + (mode === m ? "selected" : "")}
                           disabled={busy || Boolean(playback)} onClick={() => { setPlacementOpen(false); setMode(m); }}>{label}</button>
                       ))}
+                      {!placementOpen && workspaceMode === "regions" && (draft.regions.some(region => !region.cells.length) || new Set(draft.regions.map(region => region.name)).size < draft.regions.length) && <button className="pill compact" data-testid="repair-regions" disabled={busy || Boolean(playback)} onClick={repairRegionList}>빈 영역·중복 이름 정리</button>}
+                      {!placementOpen && workspaceMode === "regions" && <button className="pill compact" data-testid="delete-region" title="선택한 영역 자체만 삭제하고 화살은 유지합니다." disabled={busy || Boolean(playback) || Boolean(recovery) || !selectedRegion} onClick={deleteRegion}>영역 자체 삭제</button>}
                     </div>
                   </div>
-                  <div className="editor-tools">
+                  <div className="editor-tools" inert={Boolean(candidatePreview)}>
                     <button data-testid="clear-board-arrows" disabled={busy || Boolean(playback) || Boolean(recovery) || !draft.stage.arrows.length} onClick={() => clearArrows(false)}>전체 화살 지우기</button>
                     <button data-testid="clear-region-arrows" title="몸체 전체가 선택 영역 안에 있는 화살만 삭제합니다." disabled={busy || Boolean(playback) || Boolean(recovery) || !selectedRegion || !draft.stage.arrows.length} onClick={() => clearArrows(true)}>선택 영역 화살 지우기</button>
                     <button
@@ -1068,6 +1147,7 @@ function App() {
                     <button onClick={() => setLinks(!links)}>
                       {links ? "연결 숨기기" : "연결 보기"}
                     </button>
+                    <label><input type="checkbox" aria-label="화살 ID 표시" checked={showArrowIds} onChange={event => setShowArrowIds(event.target.checked)} />화살 ID 표시</label>
                     <span>
                       {historyTick >= 0 && dirty
                         ? "미저장 변경"
@@ -1113,23 +1193,25 @@ function App() {
                     {(["existing", "primary", "filler"] as const).map((phase, index) => <span key={phase} style={{ color: ["#ffffff", "#ffc466", "#54d7ef"][index] }}>{["기존", "1단계", "2단계"][index]} {board?.arrows.filter(arrow => (draft.placementGroups?.[arrow.id] ?? "existing") === phase).length}개</span>)}
                     <span>전체 보기에서는 단계별 색상으로 구분합니다.</span>
                   </div>}
+                  {candidatePreview && <div className="board-status" data-testid="candidate-preview">{candidatePreview.name} · 미리보기</div>}
                   <div className="canvas-wrap">
                     <BoardEditor
                       key={draft.stage.id}
                       stage={board!}
-                      placementGroups={draft.placementGroups}
+                      placementGroups={candidatePreview ? candidatePreview.draft.placementGroups : draft.placementGroups}
                       phaseView={phaseView}
                       phaseColors={true}
-                      regions={draft.regions}
+                      regions={candidatePreview?.draft.regions ?? draft.regions}
                       regionId={regionId}
                       selected={selected}
                       mode={mode}
-                      analysis={analysis}
-                      free={free}
-                      links={links && (!draft.placementGroups || phaseView === "all")}
+                      analysis={candidatePreview ? null : analysis}
+                      free={candidatePreview ? [] : free}
+                      links={!candidatePreview && links && (!draft.placementGroups || phaseView === "all")}
+                      showArrowIds={showArrowIds}
                       busy={busy}
-                      editable={!playback && !recovery && !placementOpen && (!draft.placementGroups || phaseView === "all")}
-                      regionPickOnly={placementOpen}
+                      editable={!candidatePreview && !playback && !recovery && !placementOpen && (!draft.placementGroups || phaseView === "all")}
+                      regionPickOnly={!candidatePreview && placementOpen}
                       onSelect={setSelected}
                       onMode={(next) => setMode(workspaceMode === "regions" && next === "auto" ? "region" : next)}
                       onEdit={applyBoardEdit}
@@ -1188,7 +1270,7 @@ function App() {
                 )}
 
               </div>
-              <aside className="workspace-right">
+              <aside className="workspace-right" inert={Boolean(candidatePreview)}>
                 {placementOpen ? (
                   <PlacementSettings {...placementControls} onClose={() => changePlacementOpen(false)} />
                 ) : (
@@ -1447,7 +1529,8 @@ function App() {
                   onToggle={(event) => {
                     const open = event.currentTarget.open;
                     setCandidateHistoryOpen(open);
-                    if (open) setPlacementOpen(false);
+                    if (!open) setCandidatePreview(null);
+                    if (open) setPlacementTableOpen(false);
                   }}
                 >
                   <summary>
@@ -1463,14 +1546,11 @@ function App() {
                         <button
                           className={
                             "candidate-card " +
-                            (c.id === candidateId ? "active" : "")
+                            ((candidatePreview?.id ?? candidateId) === c.id ? "active" : "")
                           }
                           key={c.id}
-                          onClick={() =>
-                            guarded(() =>
-                              loadDraft(c.versions.at(-1)!.draft, c.id),
-                            )
-                          }
+                          onClick={() => { setPhaseView("all"); setSelected(""); setCandidatePreview({ id: c.id, name: c.name, draft: clone(c.versions.at(-1)!.draft) }); }}
+                          onDoubleClick={() => guarded(() => loadDraft(c.versions.at(-1)!.draft, c.id))}
                         >
                           <strong>{c.name}</strong>
                           <span>
@@ -1480,10 +1560,15 @@ function App() {
                         </button>
                       ))}
                     </div>
+                    {entry && entry.candidates.length > 0 && <div className="version-tools">
+                      <button className="pill primary" disabled={!candidatePreview || busy || saving} onClick={() => { if (candidatePreview) guarded(() => loadDraft(candidatePreview.draft, candidatePreview.id)); }}>후보 선택</button>
+                      <button className="pill bordered" disabled={busy || saving} onClick={() => void deleteCandidate(candidatePreview?.id ?? candidateId)}>후보 완전 삭제</button>
+                      {candidatePreview && <button className="pill" onClick={() => setCandidatePreview(null)}>미리보기 종료</button>}
+                    </div>}
                     {!entry?.candidates.length && (
                       <p>‘저장’하면 첫 후보가 만들어집니다.</p>
                     )}
-                    {candidate && (
+                    {candidate && !candidatePreview && (
                       <div className="version-tools">
                         <select
                           aria-label="저장 버전"
@@ -1519,7 +1604,7 @@ function App() {
                     )}
                   </div>
                 </details>
-              <PlacementTable {...placementControls} open={placementOpen} onOpenChange={changePlacementOpen} />
+              <PlacementTable {...placementControls} open={placementTableOpen} onOpenChange={(open) => { setPlacementTableOpen(open); if (open) setCandidateHistoryOpen(false); }} />
               </div>
             </div>
           )}

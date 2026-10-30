@@ -97,3 +97,17 @@ test("structural size limits do not pretend to validate gameplay", () => {
   ];
   assert.doesNotThrow(() => checkDraft(d));
 });
+
+test('explicit candidate deletion removes versions, preserves other candidates, and rejects stale revisions', async t => {
+  const store = await fixture(t);
+  const initial = await store.load();
+  initial.stages.push({ id: 'STAGE-001', archived: false, candidates: ['C1', 'C2'].map(id => ({ id, name: id, versions: [{ id: 'V1', at: '2026-10-20', draft: draft() }] })) });
+  const saved = await store.save(initial, 0);
+  await assert.rejects(store.deleteCandidate('STAGE-001', 'C1', 0), /충돌/);
+  assert.equal((await store.load()).stages[0].candidates.length, 2);
+  const removed = await store.deleteCandidate('STAGE-001', 'C1', saved.revision);
+  assert.deepEqual(removed.stages[0].candidates, [saved.stages[0].candidates[1]]);
+  const empty = await store.deleteCandidate('STAGE-001', 'C2', removed.revision);
+  assert.equal(empty.stages[0].candidates.length, 0);
+  assert.deepEqual(await store.load(), empty);
+});

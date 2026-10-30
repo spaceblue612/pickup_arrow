@@ -197,6 +197,21 @@ export class LibraryStore {
       await readJson(path.join(this.directory, "library.json"), emptyLibrary()),
     );
   }
+  deleteCandidate(stageId, candidateId, expectedRevision) {
+    const operation = this.queue.then(async () => {
+      const current = await this.load();
+      requireValue(current.revision === expectedRevision, "저장 충돌: 최신 데이터를 다시 열어 주세요.");
+      const stage = current.stages.find(item => item.id === stageId);
+      requireValue(stage && stage.candidates.some(item => item.id === candidateId), "삭제할 후보가 없습니다.");
+      stage.candidates = stage.candidates.filter(item => item.id !== candidateId);
+      current.revision += 1;
+      checkLibrary(current);
+      await atomicJson(path.join(this.directory, "library.json"), current);
+      return current;
+    });
+    this.queue = operation.catch(() => {});
+    return operation;
+  }
   save(library, expectedRevision) {
     const operation = this.queue.then(async () => {
       checkLibrary(library);

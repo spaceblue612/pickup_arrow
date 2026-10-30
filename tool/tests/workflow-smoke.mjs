@@ -228,6 +228,41 @@ export async function runWorkflow({
     `document.querySelector('[data-testid="candidate-history"] summary').click()`,
   );
 
+  await page(`document.querySelector('[data-testid="candidate-history"] summary').click()`);
+  const beforeBrowse = await store.load();
+  await page(`document.querySelectorAll('.candidate-card')[0].click()`);
+  await until(`!!document.querySelector('[data-testid="candidate-preview"]')`);
+  assert.equal(await page(`document.querySelector('[data-testid="candidate-history"]').open`), true);
+  await store.queue;
+  assert.deepEqual(await store.load(), beforeBrowse, "preview never writes candidates");
+  await click("후보 선택");
+  await until(`!document.querySelector('[data-testid="candidate-history"]').open && !document.querySelector('[data-testid="candidate-preview"]')`);
+  await page(`document.querySelector('[data-testid="candidate-history"] summary').click()`);
+  await click("자동 배치");
+  await page(`(()=>{const input=document.querySelector('.placement-settings input[aria-label="전체 보드 채움률"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'40');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await save();
+  await page(`document.querySelectorAll('.candidate-card')[1].dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`);
+  await until(`!document.querySelector('[data-testid="candidate-history"]').open`);
+  await page(`document.querySelector('[data-testid="candidate-history"] summary').click()`);
+  await click("자동 배치");
+  assert.equal(await page(`document.querySelector('.placement-settings input[aria-label="전체 보드 채움률"]').value`), "");
+  await page(`(()=>{const input=document.querySelector('.placement-settings input[aria-label="전체 보드 채움률"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'80');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await save();
+  await page(`document.querySelectorAll('.candidate-card')[0].click()`);
+  await until(`!!document.querySelector('[data-testid="candidate-preview"]')`);
+  assert.equal(await page(`document.querySelector('.placement-settings input[aria-label="전체 보드 채움률"]').value`), "40");
+  const settingsSaved = await store.load();
+  const settingsStage = settingsSaved.stages.at(-1);
+  assert.deepEqual(settingsStage.candidates.map(item => item.versions.at(-1).draft.placementSettings.inputs[""].fill), [40, 80]);
+  await page(`(()=>{window.__originalConfirm=window.confirm;window.confirm=()=>true})()`);
+  await click("후보 완전 삭제");
+  await until(`document.querySelectorAll('.candidate-card').length === 1`);
+  await page(`(()=>{window.confirm=window.__originalConfirm;delete window.__originalConfirm})()`);
+  await store.queue;
+  const afterDelete = await store.load();
+  const displayedStage = await page(`document.querySelector('h1').textContent`);
+  assert.equal(afterDelete.stages.find(stage => stage.id === displayedStage).candidates.length, 1);
+
   return {
     coreAnalysis: true,
     drawing: true,

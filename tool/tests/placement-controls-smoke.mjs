@@ -17,6 +17,12 @@ export async function runPlacementControls({
     await page(`({ dirty: document.querySelector('main').dataset.dirty,
     shapes: [...document.querySelectorAll('svg.editable-board [data-arrow-id] polyline')].map(node=>node.getAttribute('points')),
     undo: [...document.querySelectorAll('button')].find(b => b.textContent.trim()==='↶ 실행 취소').disabled })`);
+  assert.equal(await page(`document.querySelector('[aria-label="화살 ID 표시"]').checked`), false);
+  assert.equal(await page(`document.querySelectorAll('svg.editable-board [data-arrow-id] text').length`), 0);
+  await page(`document.querySelector('[aria-label="화살 ID 표시"]').click()`);
+  await until(`document.querySelectorAll('svg.editable-board [data-arrow-id] text').length > 0`);
+  await page(`document.querySelector('[aria-label="화살 ID 표시"]').click()`);
+  await until(`document.querySelectorAll('svg.editable-board [data-arrow-id] text').length === 0`);
   await page(
     `document.querySelector('[data-testid="candidate-history"] summary').click()`,
   );
@@ -24,6 +30,10 @@ export async function runPlacementControls({
     `document.querySelector('[data-testid="candidate-history"]').open`,
   );
   await click("자동 배치");
+  await until(`!!document.querySelector('[data-testid="placement-settings"]')`);
+  assert.equal(await page(`document.querySelector('[data-testid="placement-dock"]').open`), false);
+  assert.equal(await page(`document.querySelector('[data-testid="placement-settings-generate"]').disabled`), false);
+  await page(`document.querySelector('[data-testid="placement-dock"] summary').click()`);
   await until(
     `document.querySelector('[data-testid="placement-dock"]').open && !document.querySelector('[data-testid="candidate-history"]').open`,
   );
@@ -52,10 +62,10 @@ export async function runPlacementControls({
     "generation is available",
   );
   assert.equal(
-    await page(`document.querySelectorAll('.placement-dock input').length`),
+    await page(`document.querySelectorAll('.placement-dock input[type=number]').length`),
     (await page(
       `document.querySelectorAll('.placement-dock tbody tr').length`,
-    )) * 6 + 1,
+    )) * 6,
   );
 
   assert.equal(await page(`document.querySelector('.placement-settings input[aria-label$=" 1단계 점유율"]').value`), "30");
@@ -66,6 +76,28 @@ export async function runPlacementControls({
   await until(`document.querySelector('.placement-dock tbody tr').textContent.includes('20타일 · 5개')`);
   await page(`document.querySelector('[aria-label="길이 규칙 삭제"]').click()`);
   await until(`document.querySelector('.placement-dock tbody tr').textContent.includes('기초 랜덤')`);
+
+  for (const label of ["1단계 점유율", "채움률", "분포 균일도", "굴곡 비율", "막힌 화살", "다른 화살을 막는 화살"]) {
+    const name = `전체 보드 ${label}`;
+    await page(`(()=>{const input=document.querySelector('.placement-dock input[type=number][aria-label='+${JSON.stringify(JSON.stringify(name))}+']');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'25');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await until(`document.querySelector('.placement-settings input[type=number][aria-label='+${JSON.stringify(JSON.stringify(name))}+']').value==='25'`);
+    await page(`(()=>{const input=document.querySelector('.placement-settings input[type=number][aria-label='+${JSON.stringify(JSON.stringify(name))}+']');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await until(`document.querySelector('.placement-dock input[type=number][aria-label='+${JSON.stringify(JSON.stringify(name))}+']').value===${JSON.stringify(label === "1단계 점유율" ? "30" : "")}`);
+  }
+  await page(`document.querySelector('[aria-label="오른쪽 자동 재시도"]').click()`);
+  assert.equal(await page(`document.querySelector('.placement-actions input[type=checkbox]').checked`), true);
+  await page(`document.querySelector('[aria-label="오른쪽 자동 재시도"]').click()`);
+
+  await page(`document.querySelector('.placement-settings [aria-label="2단계 채움률 계산 설명"]').click()`);
+  await until(`!!document.querySelector('.placement-help-popup:popover-open')`);
+  assert.match(await page(`document.querySelector('.placement-help-popup:popover-open').textContent`), /1단계 배치 후 남은 빈칸/);
+  assert.match(await page(`document.querySelector('.placement-help-popup:popover-open').textContent`), /86%/);
+  await page(`document.querySelector('.placement-help-popup:popover-open').hidePopover()`);
+  await page(`document.querySelector('.placement-dock [aria-label="굴곡 비율 % 계산 설명"]').dispatchEvent(new MouseEvent('mouseover',{bubbles:true}))`);
+  await until(`!!document.querySelector('.placement-help-popup:popover-open')`);
+  assert.match(await page(`document.querySelector('.placement-help-popup:popover-open').textContent`), /꺾임 횟수/);
+  await page(`document.querySelector('.placement-dock [aria-label="굴곡 비율 % 계산 설명"]').dispatchEvent(new MouseEvent('mouseout',{bubbles:true,relatedTarget:document.body}))`);
+  await until(`!document.querySelector('.placement-help-popup:popover-open')`);
 
   // Use the real native input setter so React receives the same event as typing.
   const region = await page(
@@ -180,9 +212,9 @@ export async function runPlacementControls({
     `document.querySelector('.placement-dock').getBoundingClientRect().height > ${beforeHeight}`,
   );
   await page(`document.querySelector('[aria-label="자동 배치 닫기"]').click()`);
-  await until(
-    `!document.querySelector('[data-testid="placement-dock"]').open && !!document.querySelector('[data-testid="stage-inspector"]')`,
-  );
+  await until(`!!document.querySelector('[data-testid="stage-inspector"]')`);
+  assert.equal(await page(`document.querySelector('[data-testid="placement-dock"]').open`), true);
+  await page(`document.querySelector('.placement-dock summary').click()`);
   await page(`document.querySelector('.placement-dock summary').click()`);
   await until(`document.querySelector('[data-testid="placement-dock"]').open`);
   await page(
@@ -199,7 +231,7 @@ export async function runPlacementControls({
   );
   assert.equal(
     await page(`document.querySelector('main').dataset.dirty`),
-    original.dirty,
+    "true",
   );
   assert.deepEqual(
     await page(
@@ -212,7 +244,7 @@ export async function runPlacementControls({
     await page(
       `[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='↶ 실행 취소').disabled`,
     ),
-    original.undo,
+    false,
   );
   await store.queue;
   assert.deepEqual(
@@ -220,11 +252,8 @@ export async function runPlacementControls({
     saved,
     "UI inputs never change candidates or versions",
   );
-  assert.deepEqual(
-    await store.recovery(),
-    recovery,
-    "UI inputs never create recovery changes",
-  );
+  const persistedRecovery = await store.recovery();
+  assert.equal(persistedRecovery.draft.placementSettings.inputs[region].fill, 70);
   const fixture = saved.stages.at(-1).candidates[0].versions.at(-1).draft;
   const regionCells = new Set(fixture.regions[0].cells.map(cell => cell.join(",")));
   const keptIds = fixture.stage.arrows.filter(arrow => !arrow.cells.every(cell => regionCells.has(cell.join(",")))).map(arrow => arrow.id).sort();
@@ -240,11 +269,24 @@ export async function runPlacementControls({
   await click("↶ 실행 취소");
   await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${fixture.stage.arrows.length}`);
   assert.deepEqual(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id] polyline')].map(node=>node.getAttribute('points'))`), original.shapes);
+  await page(`document.querySelectorAll('.placement-row-target')[1].click()`);
+  assert.equal(await page(`!!document.querySelector('[data-testid="delete-region"]')`), false);
+  await click("영역 관리");
+  await until(`!!document.querySelector('[data-testid="delete-region"]')`);
+  await page(`document.querySelector('[data-testid="delete-region"]').click()`);
+  await until(`document.querySelectorAll('.placement-dock tbody tr').length === ${fixture.regions.length}`);
+  assert.deepEqual(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id] polyline')].map(node=>node.getAttribute('points'))`), original.shapes);
+  await click("↶ 실행 취소");
+  await until(`document.querySelectorAll('.placement-dock tbody tr').length === ${fixture.regions.length + 1}`);
+  await click("↷ 다시 실행");
+  await until(`document.querySelectorAll('.placement-dock tbody tr').length === ${fixture.regions.length}`);
+  await click("↶ 실행 취소");
+  await until(`document.querySelectorAll('.placement-dock tbody tr').length === ${fixture.regions.length + 1}`);
   return {
     bulkDeleteUndo: true,
     independentInputs: true,
     regionSelection: true,
-    noPersistence: true,
+    settingsRecovery: true,
     resizable: true,
     sizes,
   };

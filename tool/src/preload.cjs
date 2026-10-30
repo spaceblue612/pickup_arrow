@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld(
     bootstrap: () => ipcRenderer.invoke("editor:bootstrap"),
     save: (document, expectedRevision) =>
       ipcRenderer.invoke("editor:save", document, expectedRevision),
+    deleteCandidate: (stageId, candidateId, expected) => ipcRenderer.invoke("editor:deleteCandidate", stageId, candidateId, expected),
     recover: (recovery) => ipcRenderer.invoke("editor:recover", recovery),
     core: (request) => ipcRenderer.invoke("editor:core", request),
     cancel: () => ipcRenderer.invoke("editor:cancel"),

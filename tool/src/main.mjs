@@ -149,6 +149,7 @@ async function start() {
     };
   });
   handle("save", (document, expected) => store.save(document, expected));
+  handle("deleteCandidate", (stageId, candidateId, expected) => store.deleteCandidate(stageId, candidateId, expected));
   handle("recover", (value) => store.recover(value));
   handle("core", (request) =>
     core.run({ ...request, stage_contract: "authoring_v1" }, settings),

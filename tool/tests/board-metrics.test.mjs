@@ -69,3 +69,26 @@ test("empty and fully forbidden boards have finite occupancy", () => {
     coverage: 0,
   });
 });
+
+test('region summaries count heads and clipped bodies and separate generation phases', async () => {
+  const { summarizePlacement } = await import('../src/board-metrics.mjs');
+  const stage = { id: 'S', grid_size: [4, 2], blocked_cells: [[4, 2]], arrows: [
+    { ...arrow([[1, 1], [2, 1]]), id: 'old' },
+    { ...arrow([[3, 1], [4, 1]]), id: 'core' },
+    { ...arrow([[2, 2], [3, 2]]), id: 'fill' },
+  ] };
+  const groups = { old: 'existing', core: 'primary', fill: 'filler' };
+  const all = summarizePlacement(stage, undefined, groups);
+  assert.equal(all.arrowCount, 3);
+  assert.equal(all.empty, 1);
+  assert.equal(all.primaryCoverage, 40);
+  assert.equal(all.fillCoverage, 66.7);
+  const region = summarizePlacement(stage, [[2, 1], [3, 1], [2, 2], [3, 2]], groups);
+  assert.equal(region.arrowCount, 2);
+  assert.equal(region.occupied, 4);
+  assert.equal(region.coverage, 100);
+  assert.equal(region.width, 2);
+  assert.equal(region.height, 2);
+  assert.equal(summarizePlacement(stage, []).coverage, 0);
+  assert.equal(summarizePlacement(stage).primaryCoverage, null);
+});

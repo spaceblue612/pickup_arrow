@@ -23,7 +23,14 @@ export type Stage = {
 };
 export type Region = { id: string; name: string; cells: Cell[] };
 export type PlacementPhase = "existing" | "primary" | "filler";
+export type PlacementSettingsSnapshot = {
+  inputs: import("./PlacementControls").PlacementInputs;
+  lengthRules: import("./PlacementControls").LengthRules;
+  baseLength: { min: string; max: string };
+  automaticPlacement: boolean;
+};
 export type Draft = {
+  placementSettings?: PlacementSettingsSnapshot;
   placementGroups?: Record<string, PlacementPhase>;
   stage: Stage;
   regions: Region[];
@@ -74,6 +81,7 @@ export interface EditorAPI {
     }>
   >;
   save(library: Library, expected: number): Promise<Result<Library>>;
+  deleteCandidate(stageId: string, candidateId: string, expected: number): Promise<Result<Library>>;
   recover(recovery: Recovery | null): Promise<Result<void>>;
   core(request: {
     operation: string;

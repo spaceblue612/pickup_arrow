@@ -1,3 +1,4 @@
+import { PlacementHelp } from "./PlacementHelp";
 import React, { useRef, useState } from "react";
 import type { Region } from "./types";
 
@@ -5,11 +6,9 @@ const FIELDS = {
   stage1: { label: "1단계 점유율", unit: "%", min: 0, max: 100 },
   fill: { label: "채움률", unit: "%", min: 0, max: 100 },
   uniformity: { label: "분포 균일도", unit: "%", min: 0, max: 100 },
-  bends: { label: "굴곡 정도", unit: "/ 100", min: 0, max: 100 },
-  wrapping: { label: "시각적 맞물림", unit: "%", min: 0, max: 100 },
+  bends: { label: "굴곡 비율", unit: "%", min: 0, max: 100 },
   blocker: { label: "다른 화살을 막는 화살", unit: "%", min: 0, max: 100 },
   participation: { label: "막힌 화살", unit: "%", min: 0, max: 100 },
-  depth: { label: "연쇄 깊이", unit: "단계", min: 1, max: undefined },
 } as const;
 type Field = keyof typeof FIELDS;
 export type PlacementValues = Partial<Record<Field, number>>;
@@ -21,6 +20,7 @@ type ControlsProps = {
   setLengthRules: React.Dispatch<React.SetStateAction<LengthRules>>;
   baseLength: { min: string; max: string };
   setBaseLength: React.Dispatch<React.SetStateAction<{ min: string; max: string }>>;
+  stats?: ReturnType<typeof import("./board-metrics.mjs").summarizePlacement>;
   regions: Region[];
   selectedId: string;
   inputs: PlacementInputs;
@@ -51,7 +51,8 @@ function NumericInput({
       min={definition.min}
       max={definition.max}
       step={1}
-      placeholder="—"
+      title={field === "bends" ? "꺾임 횟수 ÷ 1단계 점유 타일 수" : field === "fill" ? "미입력 시 70%" : field === "stage1" ? "대상의 배치 가능한 칸 기준" : undefined}
+      placeholder={field === "fill" ? "70" : "—"}
       value={inputs[id]?.[field] ?? (field === "stage1" ? 30 : "")}
       onChange={(event) => {
         const input = event.currentTarget;
@@ -83,7 +84,7 @@ export function PlacementSettings(
     return (
       <div className="placement-field" key={key}>
         <div className="placement-field-heading">
-          <span>{(["participation", "blocker"] as string[]).includes(key) && <input type="checkbox" aria-label={`${target} ${label} 사용`} checked={values[key] !== undefined} onChange={event => onChange(selectedId, key, event.target.checked ? 30 : undefined)} />}{label}</span>
+          <span>{(["participation", "blocker"] as string[]).includes(key) && <input type="checkbox" aria-label={`${target} ${label} 사용`} checked={values[key] !== undefined} onChange={event => onChange(selectedId, key, event.target.checked ? 30 : undefined)} />}<PlacementHelp topic={key}>{label}</PlacementHelp></span>
           <span className="placement-number">
             <NumericInput
               {...props}
@@ -110,7 +111,7 @@ export function PlacementSettings(
     );
   }
   return (
-    <section className="placement-settings" data-testid="placement-settings">
+    <section id="placement-settings" className="placement-settings" data-testid="placement-settings">
       <div className="section-heading">
         <h2>자동 배치</h2>
         <button
@@ -121,7 +122,22 @@ export function PlacementSettings(
           닫기
         </button>
       </div>
-      <p className="placement-ui-note">1단계 배치 후 남은 빈칸을 채웁니다. 채움률 미입력 시 70%, 길이 미입력 시 2~4칸을 사용합니다.</p>
+      {props.stats && <div data-testid="placement-actual-stats">
+        <div className="section-heading"><strong>{target}</strong><small>현재 배치</small></div>
+        <dl className="stage-stats">
+          <div title="선택한 영역 안에 머리가 있는 화살 수"><dt><PlacementHelp topic="arrows">화살표</PlacementHelp></dt><dd>{props.stats.arrowCount}<small>개</small></dd></div>
+          <div title="금지 칸을 제외한 대상의 고유 점유 칸 비율"><dt><PlacementHelp topic="coverage">배치 점유율</PlacementHelp></dt><dd>{props.stats.coverage}<small>%</small></dd></div>
+          <div><dt><PlacementHelp topic="empty">빈 배치 칸</PlacementHelp></dt><dd>{props.stats.empty}<small>/ {props.stats.usable}</small></dd></div>
+          <div title="영역은 영역을 둘러싼 사각형의 너비와 높이"><dt><PlacementHelp topic="size">너비 × 높이</PlacementHelp></dt><dd>{props.stats.width} × {props.stats.height}</dd></div>
+        </dl>
+        <div className="placement-target-actual">
+          <span>단계</span><span>목표</span><span><PlacementHelp topic="actual">실제</PlacementHelp></span>
+          <span><PlacementHelp topic="stage1">1단계 점유율</PlacementHelp></span><span>{values.stage1 ?? 30}%</span><span>{props.stats.primaryCoverage === null ? "—" : `${props.stats.primaryCoverage}%`}</span>
+          <span><PlacementHelp topic="fill">2단계 채움률</PlacementHelp></span><span>{values.fill ?? 70}%</span><span>{props.stats.fillCoverage === null ? "—" : `${props.stats.fillCoverage}%`}</span>
+        </div>
+      </div>}
+      <label><input type="checkbox" aria-label="오른쪽 자동 재시도" checked={props.automaticPlacement} onChange={event => props.setAutomaticPlacement(event.target.checked)} />자동 재시도 · 미달 시 적용 안 함</label>
+      <button className="pill primary" data-testid="placement-settings-generate" disabled={props.busy} onClick={props.onGenerate}>{props.busy ? "생성 중" : "랜덤 생성"}</button>
       <label className="placement-target">
         조절 대상
         <select
@@ -138,21 +154,22 @@ export function PlacementSettings(
         </select>
       </label>
       <fieldset>
-        <legend>공간 채우기</legend>
+        <legend>보드·공간 설정</legend>
+        <h3 className="placement-subheading">1단계 · 핵심 배치 공간</h3>
         {field("stage1")}
-        <p className="placement-ui-note">선택한 보드 또는 영역의 배치 가능한 칸 기준</p>
+        <h3 className="placement-subheading">2단계 · 남은 빈칸 채우기</h3>
         {field("fill")}
         {field("uniformity")}
       </fieldset>
       <fieldset>
-        <legend>화살 모양</legend>
+        <legend>화살 설정 · 1단계</legend>
         <div className="placement-field">
-          <div className="section-heading"><strong>길이 규칙</strong><button className="pill bordered" onClick={() => props.setLengthRules(current => ({ ...current, [selectedId]: [...(current[selectedId] ?? []), { id: crypto.randomUUID(), length: "", amount: "", unit: "count" }] }))}>＋ 길이 추가</button></div>
-          <p className="placement-ui-note">기초 랜덤 · 공통 길이 범위 (타일)</p>
+          <div className="section-heading"><strong><PlacementHelp topic="length">길이 규칙</PlacementHelp></strong><button className="pill bordered" onClick={() => props.setLengthRules(current => ({ ...current, [selectedId]: [...(current[selectedId] ?? []), { id: crypto.randomUUID(), length: "", amount: "", unit: "count" }] }))}>＋ 길이 추가</button></div>
+          <h3 className="placement-subheading" title="기초 길이 범위는 전체 보드와 모든 영역에서 공통으로 사용합니다.">기초 길이 · 공통</h3>
           <div className="placement-lengths">
-            {(["min", "max"] as const).map(key => <label key={key}>{key === "min" ? "최소" : "최대"}<input type="number" min="2" step="1" aria-label={`기초 랜덤 ${key === "min" ? "최소" : "최대"} 길이`} value={props.baseLength[key]} disabled={selectedId !== ""} placeholder="—" onChange={e => props.setBaseLength(current => ({ ...current, [key]: e.target.value }))} /></label>)}
+            {(["min", "max"] as const).map(key => <label key={key}>{key === "min" ? "최소" : "최대"}<input type="number" min="2" step="1" aria-label={`기초 랜덤 ${key === "min" ? "최소" : "최대"} 길이`} value={props.baseLength[key]} disabled={selectedId !== ""} placeholder={key === "min" ? "2" : "4"} onChange={e => props.setBaseLength(current => ({ ...current, [key]: e.target.value }))} /></label>)}
           </div>
-          <p className="placement-ui-note">{selectedId ? "전체 보드의 기초 랜덤 범위 사용" : "지정한 길이 외 나머지를 채웁니다."}</p>
+          <h3 className="placement-subheading">1단계 · 지정 길이</h3>
           {(props.lengthRules[selectedId] ?? []).map(rule => {
             const update = (change: Partial<LengthRule>) => props.setLengthRules(current => ({ ...current, [selectedId]: (current[selectedId] ?? []).map(item => item.id === rule.id ? { ...item, ...change } : item) }));
             return <div className="placement-rule" key={rule.id}>
@@ -162,22 +179,12 @@ export function PlacementSettings(
               <button className="pill bordered" aria-label="길이 규칙 삭제" onClick={() => props.setLengthRules(current => ({ ...current, [selectedId]: (current[selectedId] ?? []).filter(item => item.id !== rule.id) }))}>×</button>
             </div>;
           })}
-          {!(props.lengthRules[selectedId] ?? []).length && <p className="placement-ui-note">추가한 길이 없음 · 기초 랜덤</p>}
-          <p className="placement-ui-note">개수는 정확히 · %는 {selectedId ? "선택 영역" : "전체 보드"}의 화살 수 기준 목표</p>
           {conflicts.length > 0 && <p className="placement-length-sum incomplete" role="alert">{conflicts.join(" ")}</p>}
         </div>
         {field("bends")}
-        <p className="placement-ui-note">굴곡 비율 = 꺾임 횟수 ÷ 1단계 점유 타일 수</p>
-      </fieldset>
-      <fieldset>
-        <legend>맞물림과 연쇄</legend>
-        <p>시각적 맞물림은 생성 결과의 접점 수로 표시합니다.</p>
         {field("participation")}
         {field("blocker")}
       </fieldset>
-      <p className="placement-ui-note">
-        미설정 항목은 자유 생성합니다. 조건 미달 시 요청값과 실제값을 비교해 적용 여부를 선택합니다.
-      </p>
     </section>
   );
 }
@@ -199,7 +206,10 @@ export function PlacementTable(
     setHeight(Math.max(130, Math.min(Math.min(360, innerHeight * 0.38), next)));
   }
   function value(id: string, name: string, field: Field) {
-    return <NumericInput {...props} id={id} target={name} field={field} />;
+    return <>
+      {(["participation", "blocker"] as string[]).includes(field) && <input type="checkbox" aria-label={`${name} ${FIELDS[field].label} 사용`} checked={props.inputs[id]?.[field] !== undefined} onChange={event => props.onChange(id, field, event.target.checked ? 30 : undefined)} />}
+      <NumericInput {...props} id={id} target={name} field={field} />
+    </>;
   }
   return (
     <details
@@ -217,7 +227,7 @@ export function PlacementTable(
     >
       <summary>
         자동 배치 · 영역별 설정표
-        <span>{props.regions.length}개 영역 · UI 준비</span>
+        <span>{props.regions.length}개 영역</span>
       </summary>
       <div
         className="placement-resize"
@@ -284,21 +294,24 @@ export function PlacementTable(
         </button>
       </div>
       <div className="placement-table-scroll">
-        <table>
-          <caption>생성 목표 입력 · 실제 분석값 아님 · 빈칸은 미설정</caption>
+        <table aria-label="영역별 생성 목표 비교">
           <thead>
+            <tr className="placement-column-groups">
+              <th scope="col" rowSpan={2}>대상</th>
+              <th scope="colgroup" colSpan={3}>보드·공간 설정</th>
+              <th scope="colgroup" colSpan={5}>화살 설정 · 1단계</th>
+            </tr>
             <tr>
-              <th scope="col">대상</th>
-              <th scope="col">1단계 %</th>
-              <th scope="col">채움률 %</th>
-              <th scope="col">분포 균일도 %</th>
+              <th scope="col"><PlacementHelp topic="stage1">1단계 점유율 %</PlacementHelp></th>
+              <th scope="col"><PlacementHelp topic="fill">2단계 채움률 %</PlacementHelp></th>
+              <th scope="col"><PlacementHelp topic="uniformity">2단계 균일도 %</PlacementHelp></th>
               <th scope="col">
-                길이 규칙
+                <PlacementHelp topic="length">길이 규칙</PlacementHelp>
               </th>
-              <th scope="col">굴곡 정도</th>
-              <th scope="col">시각적 맞물림</th>
-              <th scope="col">막힌 화살 %</th>
-              <th scope="col">다른 화살 막기 %</th>
+              <th scope="col"><PlacementHelp topic="bends">굴곡 비율 %</PlacementHelp></th>
+              <th scope="col"><PlacementHelp topic="participation">막힌 화살 %</PlacementHelp></th>
+              <th scope="col"><PlacementHelp topic="blocker">다른 화살을 막는 화살 %</PlacementHelp></th>
+              <th scope="col"><PlacementHelp topic="contact">맞물림 · 결과 지표</PlacementHelp></th>
             </tr>
           </thead>
           <tbody>
@@ -324,9 +337,9 @@ export function PlacementTable(
                   {(props.lengthRules[id] ?? []).length ? (props.lengthRules[id] ?? []).map(rule => <div key={rule.id}>{rule.length || "—"}타일 · {rule.amount || "—"}{rule.unit === "count" ? "개" : "% 목표"}</div>) : "기초 랜덤"}
                 </td>
                 <td>{value(id, name, "bends")}</td>
-                <td>결과 접점 수</td>
                 <td>{value(id, name, "participation")}</td>
                 <td>{value(id, name, "blocker")}</td>
+                <td>결과 접점 수</td>
               </tr>
             ))}
           </tbody>

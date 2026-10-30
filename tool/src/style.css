@@ -1383,3 +1383,58 @@ dialog::backdrop {
 }
 .placement-rule label { display: grid; gap: 4px; color: var(--muted); }
 .placement-rule input, .placement-rule select { width: 100%; padding: 3px; }
+.placement-dock input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+  margin-right: 4px;
+}
+.placement-subheading {
+  font-size: calc(11px + var(--text-size-offset));
+  color: var(--muted);
+  margin: 10px 0 6px;
+}
+.placement-dock .placement-column-groups th {
+  position: static;
+  color: var(--muted);
+  background: var(--surface-indigo);
+  border-bottom: 2px solid var(--hairline);
+}
+.placement-dock tbody td:nth-child(5) {
+  border-left: 2px solid var(--hairline);
+}
+.placement-target { margin-top: 6px; }
+.placement-settings fieldset { margin: 8px 0; padding-top: 6px; }
+.placement-settings .placement-field { margin-bottom: 6px; }
+.placement-settings .placement-subheading { margin: 6px 0 4px; }
+.placement-target-actual {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 4px 10px;
+  font-size: calc(10px + var(--text-size-offset));
+  margin: 6px 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+.placement-help-label {
+  all: unset;
+  cursor: help;
+  border-bottom: 1px dotted var(--muted);
+  font: inherit;
+  color: inherit;
+}
+.placement-help-label:focus-visible { outline: 2px solid var(--primary); }
+.placement-help-popup {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(320px, calc(100vw - 24px));
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: #202548;
+  color: #fff;
+  font-size: calc(11px + var(--text-size-offset));
+  line-height: 1.6;
+  box-shadow: 0 6px 24px #0008;
+}

@@ -9,7 +9,7 @@
     "start": "npm run build && electron .",
     "test": "node --test tests/*.test.mjs",
     "test:geometry": "node --test tests/arrow-geometry.test.mjs",
-    "test:regions": "node --test tests/region-edge.test.mjs tests/region-move.test.mjs",
+    "test:regions": "node --test tests/region-edge.test.mjs tests/region-move.test.mjs tests/region-names.test.mjs",
     "test:camera": "node --test tests/board-camera.test.mjs",
     "test:metrics": "node --test tests/board-metrics.test.mjs",
     "test:settings": "node --test tests/editor-settings.test.mjs",

@@ -75,6 +75,7 @@ type Props = {
   analysis: Analysis | null;
   free: string[];
   links: boolean;
+  showArrowIds?: boolean;
   busy: boolean;
   editable: boolean;
   regionPickOnly?: boolean;
@@ -816,7 +817,7 @@ export function BoardEditor(p: Props) {
           stroke={phaseColor}
           strokeWidth="2"
         />
-        {!ghost && (
+        {!ghost && p.showArrowIds && (
           <text x={x + 12} y={y - 12}>
             {arrow.id.slice(0, 12)}
           </text>
