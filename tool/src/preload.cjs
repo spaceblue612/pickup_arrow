@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld(
   "arrowEditor",
   Object.freeze({
     bootstrap: () => ipcRenderer.invoke("editor:bootstrap"),
+    rememberSelection: (stageId, candidateId) => ipcRenderer.invoke("editor:rememberSelection", stageId, candidateId),
     save: (document, expectedRevision) =>
       ipcRenderer.invoke("editor:save", document, expectedRevision),
     deleteCandidate: (stageId, candidateId, expected) => ipcRenderer.invoke("editor:deleteCandidate", stageId, candidateId, expected),

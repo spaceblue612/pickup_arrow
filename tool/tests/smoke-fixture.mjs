@@ -22,6 +22,7 @@ export async function createSmokeDraft(id) {
   return {
     stage,
     regions: [{ id: "REGION-FIXTURE", name: "영역 1", cells }],
+    placementGroups: Object.fromEntries(stage.arrows.map(arrow => [arrow.id, ["A", "B", "C"].includes(arrow.id) ? "primary" : arrow.id === "ARROW-FIXTURE" ? "filler" : "existing"])),
     targets: {},
     roles: {},
   };

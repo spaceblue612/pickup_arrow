@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+
+export async function runMerge({ window, directory, page, until, click, drag, wholeMove }) {
+  await page(`document.querySelector('[aria-label="스테이지 추가"]').click()`);
+  await until(`document.querySelectorAll('svg [data-arrow-id]').length===0`);
+  await click("화살 배치");
+  await click("기본 조작");
+  await drag([3,3], [7,3]);
+  const shapes = () => page(`Array.from(document.querySelectorAll('svg [data-arrow-id] polyline')).map(line=>line.getAttribute('points').split(' ').map(p=>p.split(',').map(n=>Number(n)/40+.5)))`);
+  const original = await shapes();
+  let drawing = drag([5,1], [5,5]);
+  await until(`!!document.querySelector('[data-testid="merge-arrows-dialog"][open]')`);
+  await writeFile(path.join(directory, "merge-arrows-confirm.png"), (await window.webContents.capturePage()).toPNG());
+  await click("합치기 취소");
+  await drawing;
+  assert.deepEqual(await shapes(), original);
+  drawing = drag([5,1], [5,5]);
+  await until(`!!document.querySelector('[data-testid="merge-arrows-dialog"][open]')`);
+  await click("화살표 합치기");
+  await drawing;
+  const merged = [[[3,3],[4,3],[5,3],[5,4],[5,5]]];
+  assert.deepEqual(await shapes(), merged);
+  await click("↶ 실행 취소");
+  assert.deepEqual(await shapes(), original);
+  await click("↷ 다시 실행");
+  assert.deepEqual(await shapes(), merged);
+  await click("↶ 실행 취소");
+  await drag([9,1], [9,5]);
+  const pair = await shapes();
+  const moving = wholeMove([9,1], [5,1]);
+  await until(`!!document.querySelector('[data-testid="merge-arrows-dialog"][open]')`);
+  await click("화살표 합치기");
+  await moving;
+  assert.deepEqual(await shapes(), merged);
+  await click("↶ 실행 취소");
+  assert.deepEqual(await shapes(), pair, "undo restores both original arrows");
+  await click("↶ 실행 취소");
+  await drag([4,2], [6,2]);
+  const beforeCollision = await shapes();
+  await wholeMove([4,2], [4,3]);
+  assert.equal(await page(`!!document.querySelector('[data-testid="merge-arrows-dialog"][open]')`), false);
+  assert.deepEqual(await shapes(), beforeCollision, "multiple shared cells remain a collision");
+  assert.ok(await page(`document.querySelector('[role="alert"]')?.textContent.includes('배치를 적용하지')`));
+}

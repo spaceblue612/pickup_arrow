@@ -549,6 +549,81 @@ main {
   inset: 0;
   overflow: hidden;
 }
+.board-ruler-corner,
+.board-ruler {
+  position: absolute;
+  background: var(--canvas);
+  color: var(--muted);
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.board-ruler-corner {
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+}
+.board-ruler-columns {
+  left: 30px;
+  top: 0;
+  right: 6px;
+  height: 24px;
+  border-bottom: 1px solid var(--hairline);
+}
+.board-ruler-rows {
+  left: 0;
+  top: 24px;
+  bottom: 6px;
+  width: 30px;
+  border-right: 1px solid var(--hairline);
+}
+.board-ruler button {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  min-width: 0;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.board-ruler-columns button {
+  top: 2px;
+  transform: translateX(-50%);
+}
+.board-ruler-rows button {
+  left: 3px;
+  transform: translateY(-50%);
+}
+.board-ruler button:hover,
+.board-ruler button.active {
+  color: var(--ink);
+  background: #5865f226;
+}
+.board-coordinate {
+  position: absolute;
+  left: 38px;
+  bottom: 10px;
+  z-index: 1;
+  pointer-events: none;
+  color: var(--muted);
+  background: #0a0d3acc;
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 svg.editable-board.panning {
   cursor: grab;
 }
@@ -557,8 +632,8 @@ svg.editable-board.panning {
 }
 .board-operation {
   position: absolute;
-  left: 10px;
-  top: 8px;
+  left: 38px;
+  top: 32px;
   pointer-events: none;
   background: #1e2353e8;
   border: 1px solid #ec48bd;
@@ -612,10 +687,10 @@ svg.editable-board.panning {
 }
 svg.editable-board {
   position: absolute;
-  inset: 6px;
+  inset: 24px 6px 6px 30px;
   display: block;
-  width: calc(100% - 12px);
-  height: calc(100% - 12px);
+  width: calc(100% - 36px);
+  height: calc(100% - 30px);
   touch-action: none;
   user-select: none;
   cursor: crosshair;
@@ -1438,3 +1513,100 @@ dialog::backdrop {
   line-height: 1.6;
   box-shadow: 0 6px 24px #0008;
 }
+
+/* Experimental toolbox; restore commit 04ed9c4 to compare the prior layout. */
+.board-workspace {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.board-surface { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.board-toolbox {
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--hairline);
+  background: #101535;
+  scrollbar-width: thin;
+}
+.board-toolbox .toolbar { border: 0; padding: 5px; gap: 8px; }
+.board-toolbox .tool-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; }
+.board-toolbox .tool-group[aria-label="작업 모드"] { grid-template-columns: 1fr; padding-bottom: 8px; border-bottom: 1px solid var(--hairline); }
+.board-toolbox .tool-group button { white-space: normal; overflow-wrap: anywhere; padding: 5px 2px; font-size: calc(10px + var(--text-size-offset)); border: 1px solid var(--hairline-soft); border-radius: 4px; }
+.board-toolbox button[data-icon]::before { content: attr(data-icon); display: block; font-size: 21px; line-height: 1.2; }
+.board-toolbox .tool-group[aria-label="작업 모드"] button { display: flex; align-items: center; gap: 6px; padding: 5px; }
+.board-toolbox .tool-common { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 5px; border-bottom: 1px solid var(--hairline); gap: 4px; }
+.board-toolbox .tool-common button { min-height: 32px; border: 1px solid var(--hairline-soft); border-radius: 4px; }
+.board-toolbox .tool-common label { grid-column: 1 / -1; display: flex; align-items: center; gap: 3px; font-size: 10px; }
+.board-toolbox button[aria-pressed="true"] { background: #5865f24d; border-color: #7580ff; }
+.tool-danger-group { display: grid; grid-column: 1 / -1; gap: 4px; margin-top: 8px; border-top: 1px solid var(--hairline); padding-top: 8px; }
+.tool-mode-caption { grid-column: 1 / -1; font-size: 11px; color: var(--muted); text-align: center; }
+.tool-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.board-toolbox .tool-group > button[data-short] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  gap: 3px;
+}
+.board-toolbox button[data-short]::after { content: attr(data-short); white-space: nowrap; }
+.board-toolbox [data-testid="delete-region"],
+.board-toolbox [data-testid="repair-regions"] { grid-column: 1 / -1; }
+.board-toolbox .tool-common .tool-id-toggle {
+  grid-column: auto;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.tool-id-toggle:has(input:checked) { background: #5865f24d; }
+.tool-id-toggle:focus-within { outline: 2px solid #7580ff; }
+.board-toolbox .tool-common .tool-id-toggle span { margin: 0; color: inherit; }
+.board-toolbox .tool-common { position: sticky; top: 0; z-index: 2; background: #101535; }
+/* Separate always-available controls from the mode and its subtools. */
+.tool-section-label {
+  grid-column: 1 / -1;
+  width: 100%;
+  text-align: left;
+  font-size: calc(10px + var(--text-size-offset));
+  font-weight: 600;
+  color: #aeb8ef;
+  letter-spacing: .06em;
+  padding: 1px 2px 4px;
+}
+.board-toolbox .tool-common { padding: 7px 5px 9px; border-bottom: 2px solid #424b78; }
+.board-toolbox .toolbar { padding-top: 12px; gap: 14px; }
+.board-toolbox .tool-group[aria-label="작업 모드"],
+.board-toolbox .tool-group[aria-label="하위 도구"] {
+  border: 1px solid #343e68;
+  border-radius: 5px;
+  padding: 5px;
+  background: #1a2044;
+}
+.board-toolbox .tool-group[aria-label="하위 도구"] {
+  background: #101535;
+  border-top: 2px solid #5865a4;
+}
+.placement-help-popup p {
+  margin: 0 0 8px;
+  text-align: left;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.placement-help-popup p:last-child { margin-bottom: 0; }
+.placement-help-popup .placement-help-formula {
+  padding: 6px 8px;
+  border-left: 2px solid #8994ff;
+  background: #ffffff08;
+}
+.clear-target-label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: calc(10px + var(--text-size-offset));
+  color: var(--muted);
+}
+.clear-target-label select { width: 100%; min-width: 0; padding: 4px 2px; font-size: inherit; }

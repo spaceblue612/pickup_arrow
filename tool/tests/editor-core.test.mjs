@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { CoreHost } from "../src/core-host.mjs";
+import { planArrowMerge } from "../src/arrow-merge.mjs";
 import {
   resizeBend,
   extendEndpoint,
@@ -19,6 +20,46 @@ const settings = {
   project: fileURLToPath(new URL("../../", import.meta.url)),
   timeoutMs: 15000,
 };
+test("reversing heads and tails preserves straight and bent bodies and derives the new direction", async () => {
+  const host = new CoreHost();
+  for (const cells of [
+    [[6, 2], [6, 3]],
+    [[6, 2], [6, 3], [6, 4], [7, 4], [8, 4], [9, 4]],
+  ]) {
+    const source = structuredClone(stage);
+    source.arrows = [{ id: "A", cells, head_cell: cells[0], direction: "UP" }];
+    const reversed = [...cells].reverse();
+    const response = await host.run({
+      operation: "reshape_arrow", stage: source, stage_contract: "authoring_v1",
+      arrow_id: "A", cells: reversed,
+    }, settings);
+    assert.equal(response.edit.accepted, true);
+    assert.deepEqual(response.edit.stage.arrows[0], {
+      id: "A", cells: reversed, head_cell: cells.at(-1),
+      direction: cells.length === 2 ? "DOWN" : "RIGHT",
+    });
+    assert.deepEqual(source.arrows[0].cells, cells);
+    const restored = await host.run({
+      operation: "reshape_arrow", stage: response.edit.stage, stage_contract: "authoring_v1",
+      arrow_id: "A", cells,
+    }, settings);
+    assert.equal(restored.edit.accepted, true);
+    assert.deepEqual(restored.edit.stage.arrows, source.arrows);
+  }
+});
+test("merged arrows are validated by Godot including forbidden cells on the retained path", async () => {
+  const source = structuredClone(stage), host = new CoreHost();
+  source.arrows = [{ id: "A", cells: [[3,3],[4,3],[5,3],[6,3]], head_cell: [3,3], direction: "LEFT" }];
+  const incoming = { id: "B", cells: [[5,1],[5,2],[5,3],[5,4],[5,5]], head_cell: [5,1], direction: "UP" };
+  for (const blocked of [[], [[5,4]]]) {
+    source.blocked_cells = blocked;
+    const merged = planArrowMerge(source, incoming);
+    const result = await host.run({ operation: "validate_stage", stage: merged.stage, stage_contract: "authoring_v1" }, settings);
+    assert.equal(result.validation.valid, blocked.length === 0);
+    assert.equal(merged.stage.arrows.length, 1);
+    assert.equal(source.arrows[0].cells.length, 4);
+  }
+});
 test("duplicated arrow placement is validated together with the original by Godot", async () => {
   const host = new CoreHost();
   const source = structuredClone(stage);

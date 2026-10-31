@@ -32,6 +32,6 @@ export function PlacementHelp({ topic, children }: { topic: HelpTopic; children:
   function hide() { if (!pinned.current) popup.current?.hidePopover(); }
   return <>
     <button type="button" className="placement-help-label" aria-label={`${typeof children === "string" ? children : topic} 계산 설명`} aria-controls={id} onMouseEnter={event => show(event.currentTarget)} onMouseLeave={hide} onFocus={event => show(event.currentTarget)} onBlur={hide} onClick={event => { pinned.current = !pinned.current; if (pinned.current) show(event.currentTarget); else popup.current?.hidePopover(); }}>{children}</button>
-    <div id={id} ref={popup} popover="auto" className="placement-help-popup" onToggle={event => { if (event.newState === "closed") pinned.current = false; }}>{HELP[topic]}</div>
+    <div id={id} ref={popup} popover="auto" className="placement-help-popup" onToggle={event => { if (event.newState === "closed") pinned.current = false; }}>{HELP[topic].split(/(?<=\.)\s+/).map((line, index) => <p key={index} className={line.includes("=") ? "placement-help-formula" : undefined}>{line}</p>)}</div>
   </>;
 }

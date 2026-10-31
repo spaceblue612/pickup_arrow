@@ -22,6 +22,8 @@ export function bendInfo(
   nextLength: number;
 } | null;
 export function resizeBend(cells: Cell[], index: number, delta: Cell): Cell[];
+export function moveBendLocally(cells: Cell[], index: number, delta: Cell): Cell[] | null;
+export function deleteBend(cells: Cell[], index: number): Cell[] | null;
 export function extendEndpoint(
   cells: Cell[],
   stroke: Cell[],

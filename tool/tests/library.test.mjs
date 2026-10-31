@@ -111,3 +111,29 @@ test('explicit candidate deletion removes versions, preserves other candidates, 
   assert.equal(empty.stages[0].candidates.length, 0);
   assert.deepEqual(await store.load(), empty);
 });
+
+test('confirmed selection is preserved separately from immutable candidates', async t => {
+  const store = await fixture(t);
+  assert.equal(await store.lastSelection(), null);
+  const initial = await store.load();
+  initial.stages.push({ id: 'STAGE-001', archived: false, candidates: ['C1', 'C4'].map(id => ({ id, name: id, versions: [{ id: 'V1', at: '2026-10-20', draft: draft() }] })) });
+  const saved = await store.save(initial, 0);
+  await store.rememberSelection('STAGE-001', 'C4');
+  const reopened = new LibraryStore(store.directory);
+  assert.deepEqual(await reopened.lastSelection(), { stageId: 'STAGE-001', candidateId: 'C4' });
+  assert.deepEqual(await reopened.load(), saved);
+  await assert.rejects(store.rememberSelection('STAGE-001', 'missing'), /후보/);
+  assert.equal((await store.lastSelection()).candidateId, 'C4');
+});
+
+test('representative per stage survives reopening and other candidate deletion', async t => {
+  const store = await fixture(t);
+  const library = await store.load();
+  library.stages.push({ id: 'STAGE-001', archived: false, mainCandidateId: 'C4', candidates: ['C1', 'C4'].map(id => ({ id, name: id, versions: [{ id: 'V1', at: '2026-10-20', draft: draft() }] })) });
+  const saved = await store.save(library, 0);
+  assert.equal((await new LibraryStore(store.directory).load()).stages[0].mainCandidateId, 'C4');
+  const deleted = await store.deleteCandidate('STAGE-001', 'C1', saved.revision);
+  assert.equal(deleted.stages[0].mainCandidateId, 'C4');
+  const empty = await store.deleteCandidate('STAGE-001', 'C4', deleted.revision);
+  assert.equal(empty.stages[0].mainCandidateId, null);
+});

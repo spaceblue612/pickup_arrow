@@ -27,6 +27,8 @@ type ControlsProps = {
   onSelect: (id: string) => void;
   onChange: (id: string, field: Field, value: number | undefined) => void;
   onGenerate: () => void;
+  onRegenerate: () => void;
+  canRegenerate: boolean;
   busy: boolean;
   automaticPlacement: boolean;
   setAutomaticPlacement: (value: boolean) => void;
@@ -138,6 +140,7 @@ export function PlacementSettings(
       </div>}
       <label><input type="checkbox" aria-label="오른쪽 자동 재시도" checked={props.automaticPlacement} onChange={event => props.setAutomaticPlacement(event.target.checked)} />자동 재시도 · 미달 시 적용 안 함</label>
       <button className="pill primary" data-testid="placement-settings-generate" disabled={props.busy} onClick={props.onGenerate}>{props.busy ? "생성 중" : "랜덤 생성"}</button>
+      <button className="pill bordered" data-testid="placement-settings-regenerate" title="선택한 대상의 최근 1·2단계 생성분만 교체합니다. 생성 전 화살과 이후 직접 추가한 화살은 유지합니다." disabled={props.busy || !props.canRegenerate} onClick={props.onRegenerate}>재생성 · 최근 생성분 교체</button>
       <label className="placement-target">
         조절 대상
         <select
@@ -292,6 +295,7 @@ export function PlacementTable(
         >
           랜덤 생성
         </button>
+        <button className="pill bordered" data-testid="placement-regenerate" title="최근 생성분만 교체하며 생성 전 화살은 유지합니다." disabled={props.busy || !props.canRegenerate} onClick={props.onRegenerate}>재생성</button>
       </div>
       <div className="placement-table-scroll">
         <table aria-label="영역별 생성 목표 비교">

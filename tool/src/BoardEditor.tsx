@@ -2,6 +2,7 @@ import { moveRegion } from "./region-move.mjs";
 import { findRegionEdge, edgeChange } from "./region-edge.mjs";
 import type { RegionEdge } from "./region-edge.mjs";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BoardRulers } from "./BoardRulers";
 import { fitCamera, preserveCamera, cameraViewBox } from "./board-camera.mjs";
 import type { Camera, Viewport } from "./board-camera.mjs";
 import type {
@@ -20,6 +21,8 @@ import {
   DRAG_THRESHOLD,
   extendEndpoint,
   resizeBend,
+  moveBendLocally,
+  deleteBend,
   rotateGroup,
   sameCell,
   translateCells,
@@ -62,6 +65,7 @@ type Gesture = {
   startPos?: Cell;
   moveOffset?: Cell;
   regionCells?: Cell[];
+  localBend?: boolean;
 };
 type Props = {
   placementGroups?: Record<string, "existing" | "primary" | "filler">;
@@ -167,6 +171,8 @@ export function BoardEditor(p: Props) {
     [dragging, setDragging] = useState(false),
     [shift, setShift] = useState(false),
     [alt, setAlt] = useState(false);
+  const [control, setControl] = useState(false);
+  const [rulerCell, setRulerCell] = useState<Cell | null>(null);
   const wheelHandler = useRef<(event: WheelEvent) => void>(() => {});
 
   function point(clientX: number, clientY: number): Cell {
@@ -263,6 +269,7 @@ export function BoardEditor(p: Props) {
   }
   useLayoutEffect(() => {
     measureViewport(true);
+    setRulerCell(null);
     clearTransient();
     setOperation(null);
     setContext(null);
@@ -293,9 +300,24 @@ export function BoardEditor(p: Props) {
     [],
   );
   useEffect(() => {
+    if (!context) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.button === 0 && !menuRef.current?.contains(event.target as Node))
+        setContext(null);
+    };
+    const dismiss = () => setContext(null);
+    document.addEventListener("pointerdown", dismissOutside, true);
+    window.addEventListener("blur", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      window.removeEventListener("blur", dismiss);
+    };
+  }, [context]);
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Shift") setShift(e.type === "keydown");
       if (e.key === "Alt") setAlt(e.type === "keydown");
+      if (e.key === "Control") setControl(e.type === "keydown");
       if (
         e.type !== "keydown" ||
         e.key !== "Escape" ||
@@ -320,6 +342,7 @@ export function BoardEditor(p: Props) {
       setHover(null);
       setShift(false);
       setAlt(false);
+      setControl(false);
       if (gesture.current) {
         const active = gesture.current;
         if (active.kind === "pan") setCamera(active.camera);
@@ -390,7 +413,7 @@ export function BoardEditor(p: Props) {
           : kind === "rotate"
             ? "강조된 그룹을 드래그하여 좌우 90° 회전 · 놓아 검사 · Esc 취소"
             : kind === "gap"
-              ? "꺾임점을 좌우·위아래로 드래그하여 양쪽 간격 조절 · Esc 취소"
+              ? "꺾임점을 드래그하여 인접한 선만 이동 · Ctrl+드래그: 연쇄 이동 · Esc 취소"
               : "끝점부터 이어 그리거나 몸체를 따라 줄이세요 · 최소 2칸 · Esc 취소",
     );
     svg.current?.focus();
@@ -399,6 +422,8 @@ export function BoardEditor(p: Props) {
     e.preventDefault();
     if (gesture.current || pendingRef.current || p.busy) return;
     const target = hit(point(e.clientX, e.clientY));
+    const clicked = cell(point(e.clientX, e.clientY));
+    if (inside(clicked)) setRulerCell(clicked);
     if (!p.editable && target) return;
     setOperation(null);
     setPreview(null);
@@ -411,6 +436,11 @@ export function BoardEditor(p: Props) {
     });
   }
   function down(e: React.PointerEvent<SVGSVGElement>) {
+    if (context && e.button === 0) {
+      e.preventDefault();
+      setContext(null);
+      return;
+    }
     const pan = e.button === 1 || (e.button === 0 && e.shiftKey);
     if (
       (e.button !== 0 && e.button !== 1) ||
@@ -421,6 +451,7 @@ export function BoardEditor(p: Props) {
     const pos = point(e.clientX, e.clientY),
       c = cell(pos),
       target = hit(pos);
+    if (!pan && inside(c)) setRulerCell(c);
     if (p.regionPickOnly && !pan && !p.busy) {
       const region = p.regions.find((region) => region.cells.some((value) => sameCell(value, c)));
       p.onSelectRegion(region?.id ?? "");
@@ -501,6 +532,7 @@ export function BoardEditor(p: Props) {
       p.onSelect(target?.arrow.id ?? "");
     gesture.current = {
       kind,
+      localBend: kind === "gap" && !e.ctrlKey,
       pointerId: e.pointerId,
       button: e.button,
       start: [e.clientX, e.clientY],
@@ -528,7 +560,7 @@ export function BoardEditor(p: Props) {
     if (!g.dragged && distance < DRAG_THRESHOLD) return;
     if (!g.dragged && g.kind === "gap") {
       setOperation(g.operation ?? null);
-      p.onMessage("양쪽 간격 조절 · 놓아 검사 · Esc 취소");
+      p.onMessage(g.localBend ? "인접한 선만 이동 · 머리·꼬리 고정 · 놓아 검사 · Esc 취소" : "연쇄 이동 · 놓아 검사 · Esc 취소");
     }
     if (!g.dragged && g.kind === "duplicate") {
       setOperation(g.operation ?? null);
@@ -546,6 +578,7 @@ export function BoardEditor(p: Props) {
     }
     const pos = point(e.clientX, e.clientY),
       c = cell(pos);
+    if (inside(c)) setRulerCell(c);
     if (g.kind === "region-move" && g.regionCells && g.moveOffset) {
       g.moveOffset = moveRegion(g.regionCells, g.moveOffset, g.last, c, p.regions.filter((r) => r.id !== p.regionId), p.stage.grid_size);
       g.last = c;
@@ -589,7 +622,9 @@ export function BoardEditor(p: Props) {
       cells = extendEndpoint(arrow.cells, g.stroke, g.operation.part);
     } else if (g.operation?.kind === "gap") {
       const delta: Cell = [c[0] - g.origin[0], c[1] - g.origin[1]];
-      cells = resizeBend(arrow.cells, g.operation.index, delta);
+      cells = g.localBend
+        ? moveBendLocally(arrow.cells, g.operation.index, delta) ?? arrow.cells
+        : resizeBend(arrow.cells, g.operation.index, delta);
     } else if (g.operation?.kind === "rotate") {
       const pivot = arrow.cells[g.operation.index],
         neighbor =
@@ -718,10 +753,18 @@ export function BoardEditor(p: Props) {
       if (op.kind === "extend")
         cells = extendEndpoint(arrow.cells, g.stroke, op.part);
       else if (op.kind === "gap") {
-        cells = resizeBend(arrow.cells, op.index, [
+        const delta: Cell = [
           c[0] - g.origin[0],
           c[1] - g.origin[1],
-        ]);
+        ];
+        const adjusted = g.localBend
+          ? moveBendLocally(arrow.cells, op.index, delta)
+          : resizeBend(arrow.cells, op.index, delta);
+        if (!adjusted) {
+          p.onMessage("머리·꼬리를 고정한 채 연결할 수 없습니다. 선이 뒤집히거나 몸체가 겹치지 않도록 이동하세요.");
+          return;
+        }
+        cells = adjusted;
       } else {
         const pos = point(e.clientX, e.clientY),
           pivot = arrow.cells[op.index],
@@ -760,6 +803,8 @@ export function BoardEditor(p: Props) {
       : context && contextArrow
         ? contextArrow.cells[context.index]
         : null;
+  const localBendInfo = opArrow && operation?.kind === "gap" && gesture.current?.localBend
+    ? bendInfo(opArrow.cells, operation.index) : null;
   const affected =
     opArrow && operation
       ? operation.kind === "extend"
@@ -767,7 +812,7 @@ export function BoardEditor(p: Props) {
         : operation.kind === "move" || operation.kind === "duplicate"
           ? opArrow.cells
           : operation.kind === "gap"
-            ? opArrow.cells
+            ? localBendInfo ? opArrow.cells.slice(localBendInfo.anchor, localBendInfo.tailAnchor + 1) : opArrow.cells
             : operation.part === "head"
               ? opArrow.cells.slice(0, operation.index + 1)
               : opArrow.cells.slice(operation.index)
@@ -782,7 +827,7 @@ export function BoardEditor(p: Props) {
             ? "전체 90° 회전 · 머리 고정"
             : `${operation.part === "head" ? "머리" : "꼬리"} 쪽 그룹 90° 회전`
           : operation.kind === "gap"
-            ? "꺾임 간격 조절"
+            ? gesture.current?.localBend ? "인접한 선만 이동 · 머리·꼬리 고정" : "연쇄 이동"
             : `${operation.part === "head" ? "머리" : "꼬리"} 연장·축소`
     : "";
   function drawArrow(arrow: Arrow, ghost = false) {
@@ -856,7 +901,7 @@ export function BoardEditor(p: Props) {
       : hoverKind === "tail"
         ? "꼬리 · 드래그하여 연장·축소"
         : hoverKind === "corner"
-          ? "꺾인 코너 · 드래그하여 양쪽 간격 조절"
+          ? control ? "꺾인 코너 · Ctrl+드래그하여 연쇄 이동 · 양쪽 간격 조절" : "꺾인 코너 · 드래그하여 인접한 선만 이동 · Ctrl+드래그: 연쇄 이동 · 양쪽 간격 조절"
           : "직선 몸통 · 드래그하여 전체 이동";
   return (
     <div
@@ -867,6 +912,11 @@ export function BoardEditor(p: Props) {
       data-camera={`${camera.x},${camera.y},${camera.zoom}`}
       data-hover-kind={hoverKind}
     >
+      <BoardRulers camera={camera} viewport={viewport} grid={p.stage.grid_size} selected={rulerCell} onSelect={(axis, value) => setRulerCell(current => {
+        const next: Cell = current ? [...current] : [1, 1];
+        next[axis] = value;
+        return next;
+      })} />
       <svg
         ref={svg}
         tabIndex={0}
@@ -1154,6 +1204,21 @@ export function BoardEditor(p: Props) {
                 onClick={() => arm("gap", "tail")}
               >
                 꺾임 간격 조절
+              </button>
+              <button
+                role="menuitem"
+                disabled={!bendInfo(contextArrow.cells, context.index)}
+                onClick={() => {
+                  const cells = deleteBend(contextArrow.cells, context.index);
+                  setContext(null);
+                  if (!cells) {
+                    p.onMessage("꺾임점을 삭제하면 몸체가 겹쳐 연결할 수 없습니다.");
+                    return;
+                  }
+                  void submit({ kind: "reshape", source: copy(p.stage), arrowId: contextArrow.id, cells });
+                }}
+              >
+                꺾임점 삭제
               </button>
               <button role="menuitem" onClick={() => arm("extend", "head", 0)}>
                 머리 연장·축소

@@ -165,3 +165,80 @@ export function extendEndpoint(cells, stroke, part) {
   }
   return part === "head" ? result.reverse() : result;
 }
+
+function bendIndices(cells) {
+  const indices = [0];
+  for (let i = 1; i < cells.length - 1; i++) {
+    if (bendInfo(cells, i)) indices.push(i);
+  }
+  indices.push(cells.length - 1);
+  return indices;
+}
+
+// Rebuild orthogonal grid cells, dropping coincident vertices and straight bends.
+function connectVertices(vertices) {
+  const result = [[...vertices[0]]];
+  for (let i = 1; i < vertices.length; i++) {
+    const dx = vertices[i][0] - vertices[i - 1][0];
+    const dy = vertices[i][1] - vertices[i - 1][1];
+    if (dx !== 0 && dy !== 0) return null;
+    const length = Math.abs(dx) + Math.abs(dy);
+    if (result.length + length > 10000) return null;
+    for (let n = 1; n <= length; n++) result.push([
+      vertices[i - 1][0] + Math.sign(dx) * n,
+      vertices[i - 1][1] + Math.sign(dy) * n,
+    ]);
+  }
+  if (result.length < 2 || new Set(result.map(cell => cell.join(","))).size !== result.length) return null;
+  return result;
+}
+
+// Replace the selected bend by the opposite corner of its neighboring rectangle.
+// Collinear adjoining segments then become one continuous line.
+export function deleteBend(cells, index) {
+  if (!bendInfo(cells, index)) return null;
+  const indices = bendIndices(cells), selected = indices.indexOf(index);
+  const vertices = indices.map(i => [...cells[i]]);
+  const before = vertices[selected - 1], after = vertices[selected + 1];
+  vertices[selected] = before.map((value, axis) => value + after[axis] - cells[index][axis]);
+  return connectVertices(vertices);
+}
+
+// Move only the chosen corner and its adjacent corners; endpoints stay fixed.
+export function moveBendLocally(cells, index, delta) {
+  if (!bendInfo(cells, index)) return null;
+  const indices = bendIndices(cells);
+  const selected = indices.indexOf(index);
+  const vertices = indices.map(i => [...cells[i]]);
+  const movement = delta.map(value => Math.round(value));
+  vertices[selected] = vertices[selected].map((value, axis) => value + movement[axis]);
+  for (const neighbor of [selected - 1, selected + 1]) {
+    if (neighbor === 0 || neighbor === vertices.length - 1) continue;
+    // A horizontal segment follows vertically; a vertical one follows horizontally.
+    const perpendicular = cells[indices[neighbor]][0] === cells[index][0] ? 0 : 1;
+    vertices[neighbor][perpendicular] += movement[perpendicular];
+  }
+  for (let i = 1; i < vertices.length; i++) {
+    const before = cells[indices[i - 1]], after = cells[indices[i]];
+    const dx = vertices[i][0] - vertices[i - 1][0];
+    const dy = vertices[i][1] - vertices[i - 1][1];
+    // A collapsed segment removes redundant bends; crossing still reverses it.
+    if (dx * (after[0] - before[0]) + dy * (after[1] - before[1]) < 0) return null;
+  }
+  // If fixed endpoints leave diagonal gaps, insert an elbow on each side of
+  // the dragged corner instead of asking the author to add both manually.
+  const diagonalGap = vertices.some((point, i) => i > 0 &&
+    point[0] !== vertices[i - 1][0] && point[1] !== vertices[i - 1][1]);
+  if (movement[0] !== 0 && movement[1] !== 0 && diagonalGap) {
+    const original = indices.map(i => [...cells[i]]);
+    const before = original[selected - 1], after = original[selected + 1];
+    const moved = vertices[selected];
+    const incoming = before[1] === cells[index][1]
+      ? [moved[0], before[1]] : [before[0], moved[1]];
+    const outgoing = after[1] === cells[index][1]
+      ? [moved[0], after[1]] : [after[0], moved[1]];
+    original.splice(selected, 1, incoming, moved, outgoing);
+    return connectVertices(original);
+  }
+  return connectVertices(vertices);
+}

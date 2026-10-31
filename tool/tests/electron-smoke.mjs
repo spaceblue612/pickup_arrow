@@ -50,6 +50,16 @@ export async function runSmoke(
         result = await runPlacementControls(context);
         break;
       }
+      case "rulers": {
+        const { runRulers } = await import("./ruler-smoke.mjs");
+        result = await runRulers(context);
+        break;
+      }
+      case "bends": {
+        const { runLocalBend } = await import("./local-bend-smoke.mjs");
+        result = await runLocalBend(context);
+        break;
+      }
       case "editing": {
         await prepareSmokeFixture(context);
         const { runBoardInteractions } =

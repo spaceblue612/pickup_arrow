@@ -13,10 +13,20 @@ export async function runPlacementControls({
 }) {
   const saved = await store.load();
   const recovery = await store.recovery();
+  assert.equal(await page(`document.querySelector('.board-toolbox [aria-label="실행 취소"]').getAttribute('title')`), "실행 취소 (Ctrl+Z)");
+  assert.equal(await page(`document.querySelectorAll('.board-toolbox .tool-group[aria-label="작업 모드"] button').length`), 3);
+  assert.equal(await page(`(()=>{const tools=document.querySelector('.board-toolbox').getBoundingClientRect(),board=document.querySelector('.canvas-wrap').getBoundingClientRect();return tools.right<=board.left&&tools.top<=board.top})()`), true);
   const original =
     await page(`({ dirty: document.querySelector('main').dataset.dirty,
     shapes: [...document.querySelectorAll('svg.editable-board [data-arrow-id] polyline')].map(node=>node.getAttribute('points')),
     undo: [...document.querySelectorAll('button')].find(b => b.textContent.trim()==='↶ 실행 취소').disabled })`);
+  await page(`(()=>{const svg=document.querySelector('svg.editable-board'),r=svg.getBoundingClientRect();svg.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+20,clientY:r.top+20,button:2}));})()`);
+  await until(`!!document.querySelector('.board-context-menu')`);
+  await page(`document.querySelector('.board-context-menu strong').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0}))`);
+  assert.equal(await page(`!!document.querySelector('.board-context-menu')`), true);
+  await page(`document.querySelector('.board-heading').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0}))`);
+  await until(`!document.querySelector('.board-context-menu')`);
+  assert.equal(await page(`!!document.querySelector('[data-testid="placement-phase-controls"]')`), false);
   assert.equal(await page(`document.querySelector('[aria-label="화살 ID 표시"]').checked`), false);
   assert.equal(await page(`document.querySelectorAll('svg.editable-board [data-arrow-id] text').length`), 0);
   await page(`document.querySelector('[aria-label="화살 ID 표시"]').click()`);
@@ -37,6 +47,13 @@ export async function runPlacementControls({
   await until(
     `document.querySelector('[data-testid="placement-dock"]').open && !document.querySelector('[data-testid="candidate-history"]').open`,
   );
+  assert.equal(await page(`!!document.querySelector('[data-testid="placement-phase-controls"]')`), true);
+  await click("1단계만");
+  await click("화살 배치");
+  assert.equal(await page(`!!document.querySelector('[data-testid="placement-phase-controls"]')`), false);
+  assert.equal(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].every(node=>getComputedStyle(node).display!=='none')`), true);
+  await click("자동 배치");
+  await click("전체");
   // Middle-button panning must also work while clicks select placement regions.
   const beforePan = await page(`document.querySelector('svg.editable-board').getAttribute('viewBox')`);
   const panStart = await page(`(()=>{const r=document.querySelector('svg.editable-board').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`);
@@ -259,12 +276,16 @@ export async function runPlacementControls({
   const keptIds = fixture.stage.arrows.filter(arrow => !arrow.cells.every(cell => regionCells.has(cell.join(",")))).map(arrow => arrow.id).sort();
   await page(`document.querySelector('[data-testid="placement-open"]').click()`);
   await page(`document.querySelectorAll('.placement-row-target')[1].click()`);
-  await page(`document.querySelector('[data-testid="clear-region-arrows"]').click()`);
+  await page(`(()=>{const input=document.querySelector('[aria-label="화살 삭제 대상"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(input,${JSON.stringify(fixture.regions[0].id)});input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await page(`document.querySelectorAll('.placement-row-target')[0].click()`);
+  await page(`document.querySelector('[data-testid="clear-target-arrows"]').click()`);
   await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${keptIds.length}`);
   assert.deepEqual(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].map(node=>node.dataset.arrowId).sort()`), keptIds);
   await click("↶ 실행 취소");
   await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${fixture.stage.arrows.length}`);
-  await page(`document.querySelector('[data-testid="clear-board-arrows"]').click()`);
+  await page(`document.querySelectorAll('.placement-row-target')[0].click()`);
+  await page(`(()=>{const input=document.querySelector('[aria-label="화살 삭제 대상"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await page(`document.querySelector('[data-testid="clear-target-arrows"]').click()`);
   await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === 0`);
   await click("↶ 실행 취소");
   await until(`document.querySelectorAll('svg.editable-board [data-arrow-id]').length === ${fixture.stage.arrows.length}`);
@@ -282,6 +303,22 @@ export async function runPlacementControls({
   await until(`document.querySelectorAll('.placement-dock tbody tr').length === ${fixture.regions.length}`);
   await click("↶ 실행 취소");
   await until(`document.querySelectorAll('.placement-dock tbody tr').length === ${fixture.regions.length + 1}`);
+  await click("자동 배치");
+  await page(`document.querySelectorAll('.placement-row-target')[0].click()`);
+  await page(`(()=>{window.__retryConfirm=window.confirm;window.confirm=()=>true})()`);
+  await page(`document.querySelector('[data-testid="placement-settings-generate"]').click()`);
+  await until(`document.querySelector('[data-testid="placement-settings-generate"]').disabled===false && document.querySelector('[data-testid="placement-settings-regenerate"]').disabled===false`);
+  const firstGenerated = await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].filter(node=>node.dataset.placementPhase!=='existing').map(node=>node.dataset.arrowId)`);
+  const firstBoard = await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].map(node=>({id:node.dataset.arrowId,shape:node.querySelector('polyline').getAttribute('points')}))`);
+  assert.ok(firstGenerated.length>0);
+  await page(`document.querySelector('[data-testid="placement-settings-regenerate"]').click()`);
+  await until(`document.querySelector('[data-testid="placement-settings-generate"]').disabled===false`);
+  const secondIds = await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].map(node=>node.dataset.arrowId)`);
+  assert.ok(firstGenerated.every(id=>!secondIds.includes(id)), "retry replaces rather than accumulates the previous generated batch");
+  assert.ok(fixture.stage.arrows.every(arrow=>secondIds.includes(arrow.id)), "original arrows survive regeneration");
+  await click("↶ 실행 취소");
+  assert.deepEqual(await page(`[...document.querySelectorAll('svg.editable-board [data-arrow-id]')].map(node=>({id:node.dataset.arrowId,shape:node.querySelector('polyline').getAttribute('points')}))`),firstBoard);
+  await page(`(()=>{window.confirm=window.__retryConfirm;delete window.__retryConfirm})()`);
   return {
     bulkDeleteUndo: true,
     independentInputs: true,

@@ -1,3 +1,5 @@
+import { generatedIdsForTarget, prepareRegeneration } from "./placement-retry.mjs";
+import { representativeCandidate, representativeStage } from "./representative.mjs";
 import { nextRegionName, repairRegions } from "./region-names.mjs";
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,6 +11,7 @@ import { PlacementSettings, PlacementTable } from "./PlacementControls";
 import type { PlacementInputs, LengthRules } from "./PlacementControls";
 import { editorNotice } from "./editor-notice.mjs";
 import { directionFromCells, translateCells } from "./arrow-geometry.mjs";
+import { planArrowMerge } from "./arrow-merge.mjs";
 import type {
   Cell,
   BoardMode,
@@ -46,6 +49,18 @@ const same = (a: unknown, b: unknown) =>
 type Mode = BoardMode;
 
 function App() {
+  const [mergePrompt, setMergePrompt] = useState<null | {
+    keptId: string; removedId: string; cell: Cell; resolve: (accepted: boolean) => void;
+  }>(null);
+  const mergeDialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (mergePrompt) mergeDialogRef.current?.showModal();
+    else mergeDialogRef.current?.close();
+  }, [mergePrompt]);
+  function finishMerge(accepted: boolean) {
+    mergePrompt?.resolve(accepted);
+    setMergePrompt(null);
+  }
   const [library, setLibrary] = useState<Library>({
     schema_version: 1,
     revision: 0,
@@ -90,6 +105,7 @@ function App() {
   const [showArrowIds, setShowArrowIds] = useState(false);
   const [phaseView, setPhaseView] = useState("all");
   const [placementTableOpen, setPlacementTableOpen] = useState(false);
+  const [clearTargetId, setClearTargetId] = useState("");
   const [placementOpen, setPlacementOpen] = useState(false);
   const [candidatePreview, setCandidatePreview] = useState<{ id: string; name: string; draft: Draft } | null>(null);
   const [candidateHistoryOpen, setCandidateHistoryOpen] = useState(false);
@@ -108,6 +124,7 @@ function App() {
   const [pending, setPending] = useState<null | (() => void)>(null),
     [versionId, setVersionId] = useState("");
   const recoveryQueue = useRef(Promise.resolve());
+  const selectionQueue = useRef(Promise.resolve());
   const modalRef = useRef<HTMLDialogElement>(null),
     pendingRef = useRef<HTMLDialogElement>(null),
     recoveryRef = useRef<HTMLDialogElement>(null);
@@ -136,6 +153,7 @@ function App() {
   }
   function loadDraft(next: Draft, candidate: string | null, isDirty = false) {
     setPhaseView("all");
+    setClearTargetId("");
     setCandidatePreview(null);
     setPlacementOpen(false);
     setPlacementTableOpen(false);
@@ -206,9 +224,9 @@ function App() {
         setDirectory(b.directory);
         setExample(b.example);
         setRecovery(b.recovery);
-        const first = b.library.stages.find((s) => !s.archived);
+        const first = b.library.stages.find(s => !s.archived && s.id === b.lastSelection?.stageId) ?? b.library.stages.find((s) => !s.archived);
         if (first) {
-          const c = first.candidates[0];
+          const c = representativeCandidate(first);
           loadDraft(
             c?.versions.at(-1)?.draft ?? blank(first.id),
             c?.id ?? null,
@@ -234,6 +252,11 @@ function App() {
       .then(unwrap)
       .catch(fail);
   }, [ready, draft, dirty, candidateId, recovery]);
+  useEffect(() => {
+    if (!ready || recovery || !draft) return;
+    const stageId = draft.stage.id;
+    selectionQueue.current = selectionQueue.current.catch(() => {}).then(() => window.arrowEditor.rememberSelection(stageId, candidateId)).then(unwrap).catch(fail);
+  }, [ready, recovery, draft?.stage.id, candidateId]);
   useEffect(() => {
     if (modal && !modalRef.current?.open) modalRef.current?.showModal();
     if (!modal) modalRef.current?.close();
@@ -303,14 +326,18 @@ function App() {
     setAutomaticPlacement: (value: boolean) => updatePlacementSettings({ automaticPlacement: value }),
     busy: busy || !draft || Boolean(candidatePreview),
     onGenerate: () => void generatePlacement(),
+    onRegenerate: () => void generatePlacement(true),
+    canRegenerate: generatedIdsForTarget(draft, selectedRegion?.id ?? "").length > 0,
     onSelect: setRegionId,
     onChange: (id: string, field: keyof PlacementInputs[string], value: number | undefined) =>
       updatePlacementSettings({ inputs: { ...placementInputs, [id]: { ...placementInputs[id], [field]: value } } }),
   };
-  async function generatePlacement() {
+  async function generatePlacement(replace = false) {
     if (!draftRef.current || busyRef.current) return;
     const source = clone(draftRef.current);
     const id = selectedRegion?.id ?? "";
+    let inputStage = source.stage;
+    try { if (replace) inputStage = prepareRegeneration(source, id); } catch (error) { fail(error); return; }
     const values = placementInputs[id] ?? {};
     const min = baseLength.min === "" ? 2 : Number(baseLength.min);
     const max = baseLength.max === "" ? 4 : Number(baseLength.max);
@@ -328,7 +355,7 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      const response = unwrap(await window.arrowEditor.core({ operation: "editor_placement", stage: source.stage, placement: { cells, stage1: values.stage1 ?? 30, fill: values.fill ?? 70, min_length: min, max_length: max, seed: Math.floor(Math.random() * 2147483647), settings: { ...values, scopes: id ? [] : source.regions.filter(region => Object.keys(placementInputs[region.id] ?? {}).length || (lengthRules[region.id] ?? []).length).map(region => ({ cells: region.cells, values: placementInputs[region.id] ?? {}, rules: (lengthRules[region.id] ?? []).map(rule => ({ length: Number(rule.length), amount: Number(rule.amount), unit: rule.unit })) })), rules: (lengthRules[id] ?? []).map(rule => ({ length: Number(rule.length), amount: Number(rule.amount), unit: rule.unit })) } } }));
+      const response = unwrap(await window.arrowEditor.core({ operation: "editor_placement", stage: inputStage, placement: { cells, stage1: values.stage1 ?? 30, fill: values.fill ?? 70, min_length: min, max_length: max, seed: Math.floor(Math.random() * 2147483647), settings: { ...values, scopes: id ? [] : source.regions.filter(region => Object.keys(placementInputs[region.id] ?? {}).length || (lengthRules[region.id] ?? []).length).map(region => ({ cells: region.cells, values: placementInputs[region.id] ?? {}, rules: (lengthRules[region.id] ?? []).map(rule => ({ length: Number(rule.length), amount: Number(rule.amount), unit: rule.unit })) })), rules: (lengthRules[id] ?? []).map(rule => ({ length: Number(rule.length), amount: Number(rule.amount), unit: rule.unit })) } } }));
       if (token !== requestSerial.current || !same(draftRef.current, source)) return;
       if (!response.validation.valid) throw Error(response.validation.errors.join(" / "));
       const result = response.placement;
@@ -346,6 +373,9 @@ function App() {
       const changed = clone(source);
       changed.stage = result.stage;
       changed.placementGroups = result.groups;
+      changed.placementBatch = { targetId: id, arrowIds: Object.keys(result.groups ?? {}).filter(arrowId => result.groups?.[arrowId] !== "existing") };
+      const remainingIds = new Set(result.stage.arrows.map(arrow => arrow.id));
+      for (const arrowId of Object.keys(changed.roles)) if (!remainingIds.has(arrowId)) delete changed.roles[arrowId];
       setPhaseView("all");
       commit(changed);
       setMessage(`${metrics}\n${deviations.join("\n")}\n시도 ${result.attempts ?? 1}회 · 전체 보드 해결 가능 · 실행 취소 가능`);
@@ -420,6 +450,7 @@ function App() {
         at: new Date().toISOString(),
         draft: savedDraft,
       });
+      if (!stage.mainCandidateId) stage.mainCandidateId = c.id;
       await persist(next);
       if (draftRef.current?.stage.id === savedId) {
         setCandidateId(c.id);
@@ -434,11 +465,27 @@ function App() {
       setSaving(false);
     }
   }
+  async function selectRepresentative(id: string) {
+    if (!draftRef.current || saving || busyRef.current) return;
+    const stageId = draftRef.current.stage.id;
+    setSaving(true);
+    try {
+      const next = clone(libraryRef.current);
+      const stage = next.stages.find(item => item.id === stageId);
+      const selected = stage?.candidates.find(candidate => candidate.id === id);
+      if (!stage || !selected?.versions.length) return;
+      stage.mainCandidateId = id;
+      await persist(next);
+      loadDraft(selected.versions.at(-1)!.draft, id);
+      setMessage(`${selected.name}을 이 스테이지의 대표 후보로 지정했습니다.`);
+    } catch (error) { fail(error); }
+    finally { setSaving(false); }
+  }
   async function deleteCandidate(id: string | null) {
     if (!id || !draftRef.current || saving || busyRef.current) return;
     const stageId = draftRef.current.stage.id;
     const target = libraryRef.current.stages.find(stage => stage.id === stageId)?.candidates.find(item => item.id === id);
-    if (!target || !window.confirm(`${target.name} 후보와 저장 이력 ${target.versions.length}개를 완전히 삭제하시겠습니까? 되돌릴 수 없습니다.`)) return;
+    if (!target || !window.confirm(`${target.name}${libraryRef.current.stages.find(stage => stage.id === stageId)?.mainCandidateId === id ? " (대표 후보)" : ""} 후보와 저장 이력 ${target.versions.length}개를 완전히 삭제하시겠습니까? 되돌릴 수 없습니다.`)) return;
     setSaving(true);
     try {
       const next = unwrap(await window.arrowEditor.deleteCandidate(stageId, id, libraryRef.current.revision));
@@ -449,7 +496,7 @@ function App() {
       if (draftRef.current?.stage.id === stageId && candidateId === id && dirty) {
         setCandidateId(null);
       } else if (draftRef.current?.stage.id === stageId && candidateId === id) {
-        const replacement = stage.candidates[0];
+        const replacement = representativeCandidate(stage);
         loadDraft(replacement?.versions.at(-1)?.draft ?? blank(stageId), replacement?.id ?? null);
         setCandidateHistoryOpen(true);
       }
@@ -484,7 +531,7 @@ function App() {
     guarded(() => {
       const e = libraryRef.current.stages.find((s) => s.id === id);
       if (!e) return;
-      const c = e.candidates[0];
+      const c = representativeCandidate(e);
       loadDraft(c?.versions.at(-1)?.draft ?? blank(id), c?.id ?? null);
     });
   }
@@ -630,31 +677,26 @@ function App() {
         id = edit.arrowId ?? "";
       let response: Response;
       const adding = edit.kind === "create" || edit.kind === "duplicate";
+      let cells = edit.cells;
+      const original = source.stage.arrows.find(a => a.id === edit.arrowId);
+      if (edit.kind === "duplicate" || edit.kind === "translate") {
+        if (!original || !edit.offset || (edit.offset[0] === 0 && edit.offset[1] === 0)) return false;
+        cells = translateCells(original.cells, edit.offset);
+      }
+      if (!cells || cells.length < 2) return false;
       if (adding) {
-        let cells = edit.cells;
-        if (edit.kind === "duplicate") {
-          const original = source.stage.arrows.find(
-            (a) => a.id === edit.arrowId,
-          );
-          if (
-            !original ||
-            !edit.offset ||
-            (edit.offset[0] === 0 && edit.offset[1] === 0)
-          )
-            return false;
-          cells = translateCells(original.cells, edit.offset);
-        }
-        if (!cells || cells.length < 2) return false;
         do {
           id = "ARROW-" + uuid().slice(0, 8);
-        } while (source.stage.arrows.some((a) => a.id === id));
+        } while (source.stage.arrows.some(a => a.id === id));
+      } else if (!original) return false;
+      const incoming = { id, cells: clone(cells), head_cell: clone(cells[0]), direction: directionFromCells(cells) };
+      const merge = planArrowMerge(source.stage, incoming);
+      if (merge) {
+        stage = merge.stage;
+        response = unwrap(await window.arrowEditor.core({ operation: "validate_stage", stage }));
+      } else if (adding) {
         stage = clone(source.stage);
-        stage.arrows.push({
-          id,
-          cells: clone(cells),
-          head_cell: clone(cells[0]),
-          direction: directionFromCells(cells),
-        });
+        stage.arrows.push(incoming);
         response = unwrap(
           await window.arrowEditor.core({ operation: "validate_stage", stage }),
         );
@@ -673,19 +715,34 @@ function App() {
       }
       if (token !== requestSerial.current || !same(draftRef.current, source))
         return false;
-      if (!response.validation.valid || (!adding && !response.edit?.accepted)) {
+      if (!response.validation.valid || (!adding && !merge && !response.edit?.accepted)) {
         setError(
           "배치를 적용하지 않았습니다. 충돌·금지 칸·보드 경계·몸체 연결을 확인해 주세요. " +
             (response.edit?.errors ?? response.validation.errors).join(" / "),
         );
         return false;
       }
+      if (merge) {
+        const accepted = await new Promise<boolean>(resolve => setMergePrompt({
+          keptId: merge.keptId, removedId: merge.removedId, cell: merge.cell, resolve,
+        }));
+        if (token !== requestSerial.current || !same(draftRef.current, source)) return false;
+        if (!accepted) {
+          setMessage("화살표 합치기를 취소했습니다. 원본을 유지합니다.");
+          return false;
+        }
+        id = merge.keptId;
+      }
       const changed = clone(source);
       changed.stage = stage;
+      if (merge) {
+        delete changed.roles[merge.removedId];
+        if (changed.placementGroups) delete changed.placementGroups[merge.removedId];
+      }
       commit(changed);
       setSelected(id);
       setMessage(
-        edit.kind === "duplicate"
+        merge ? "화살표를 합쳤습니다. 실행 취소로 되돌릴 수 있습니다." : edit.kind === "duplicate"
           ? "화살표를 복제했습니다. 실행 취소로 되돌릴 수 있습니다."
           : "배치를 적용했습니다. 실행 취소로 되돌릴 수 있습니다.",
       );
@@ -773,10 +830,11 @@ function App() {
     setRegionId("");
     setMessage(`${region.name} 영역을 삭제했습니다. 화살은 유지되며 실행 취소할 수 있습니다.`);
   }
-  function clearArrows(inRegion: boolean) {
-    if (!draftRef.current || busyRef.current || playback || recovery) return;
+  function clearArrows(targetId: string) {
+    const inRegion = targetId !== "";
+    if (!draftRef.current || busyRef.current || playback || recovery || candidatePreview) return;
     const next = clone(draftRef.current);
-    const region = next.regions.find(item => item.id === regionId);
+    const region = next.regions.find(item => item.id === targetId);
     if (inRegion && !region) return;
     const cells = new Set(region?.cells.map(key));
     const removed = next.stage.arrows.filter(arrow => !inRegion || arrow.cells.every(cell => cells.has(key(cell))));
@@ -792,7 +850,8 @@ function App() {
     }
     commit(next);
     setSelected("");
-    setMessage(`${inRegion ? region!.name : "전체 보드"}의 화살 ${removed.length}개를 지웠습니다. 실행 취소로 되돌릴 수 있습니다.`);
+    setPhaseView("all");
+    setMessage(`${inRegion ? region!.name : "전체 보드"}의 화살 ${removed.length}개 삭제 · 남은 화살 ${next.stage.arrows.length}개. 실행 취소할 수 있습니다.`);
   }
   function updateTarget(name: string, value: string) {
     if (!draft) return;
@@ -1042,11 +1101,12 @@ function App() {
             </button>
             <button
               className="pill bordered"
-              disabled={!draft || busy}
+              disabled={!representativeStage(entry) || busy || saving}
               onClick={() => {
-                if (draft)
+                const output = representativeStage(entry);
+                if (output)
                   void window.arrowEditor
-                    .exportStage(draft.stage)
+                    .exportStage(output)
                     .then(unwrap)
                     .then((file) => {
                       if (file)
@@ -1059,7 +1119,7 @@ function App() {
                     .catch(fail);
               }}
             >
-              검증 후 JSON 내보내기
+              대표 후보 JSON 내보내기
             </button>
           </div>
           {!draft ? (
@@ -1099,13 +1159,38 @@ function App() {
                       {busy ? "계산 중…" : "Godot 검증·분석"}
                     </button>
                   </div>
+                  <div className="board-workspace">
+                  <aside className="board-toolbox" aria-label="보드 도구">
+                  <div className="editor-tools tool-common" aria-label="공통 도구" inert={Boolean(candidatePreview)}>
+                    <div className="tool-section-label">공통</div>
+                    <button
+                      data-icon="↶" aria-label="실행 취소" title="실행 취소 (Ctrl+Z)"
+                      disabled={!history.current.length || busy}
+                      onClick={() => undo()}
+                    >
+                      <span className="tool-sr-only">↶ 실행 취소</span>
+                    </button>
+                    <button
+                      data-icon="↷" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z)"
+                      disabled={!future.current.length || busy}
+                      onClick={() => undo(true)}
+                    >
+                      <span className="tool-sr-only">↷ 다시 실행</span>
+                    </button>
+                    <button data-icon="⌁" aria-pressed={links} title="화살 연결 표시" aria-label="화살 연결 표시" onClick={() => setLinks(!links)}>
+                      <span className="tool-sr-only">{links ? "연결 숨기기" : "연결 보기"}</span>
+                    </button>
+                    <label className="tool-id-toggle" title="화살 ID 표시"><input className="tool-sr-only" type="checkbox" aria-label="화살 ID 표시" checked={showArrowIds} onChange={event => setShowArrowIds(event.target.checked)} /><span aria-hidden="true">ID</span></label>
+
+                  </div>
                   <div className="toolbar" inert={Boolean(candidatePreview)}>
                     <div className="tool-group" aria-label="작업 모드">
+                      <div className="tool-section-label">메인</div>
                       {([ ["arrows", "화살 배치"], ["regions", "영역 관리"] ] as const).map(([value, label]) => (
-                        <button key={value} className={"pill compact " + (!placementOpen && workspaceMode === value ? "selected" : "")}
+                        <button key={value} data-icon={value === "arrows" ? "↗" : "▧"} title={label} className={"pill compact " + (!placementOpen && workspaceMode === value ? "selected" : "")}
                           disabled={busy || Boolean(playback)} aria-pressed={!placementOpen && workspaceMode === value}
                           onClick={() => { setPlacementOpen(false); setWorkspaceMode(value); setMode(value === "arrows" ? "auto" : "region"); setMessage(value === "arrows" ? "화살을 편집하세요." : "기존 영역을 클릭하여 선택하거나 빈 곳에서 드래그하여 새 영역을 만드세요."); }}>
-                          {label}
+                          <span>{label}</span>
                         </button>
                       ))}
                       <button
@@ -1115,45 +1200,34 @@ function App() {
                         disabled={busy || Boolean(playback)}
                         data-testid="placement-open"
                         onClick={() => changePlacementOpen(!placementOpen)}
-                      >자동 배치</button>
+                        data-icon="✦" title="자동 배치"
+                      ><span>자동 배치</span></button>
                     </div>
-                    <div className="tool-group">
-                      {placementOpen ? <span className="placement-toolbar-note">영역을 클릭해 조절 대상을 선택하세요.</span> : (workspaceMode === "arrows"
+                    <div className="tool-group" aria-label="하위 도구">
+                      <div className="tool-section-label">서브</div>
+                      {placementOpen ? <span className="tool-mode-caption">자동 배치</span> : (workspaceMode === "arrows"
                         ? ([ ["auto", "기본 조작"], ["mask", "금지 칸"] ] as const)
                         : ([ ["region", "영역 선택·생성"], ["add-region", "영역 +"], ["remove-region", "영역 −"] ] as const)
                       ).map(([m, label]) => (
-                        <button key={m} className={"pill compact " + (mode === m ? "selected" : "")}
-                          disabled={busy || Boolean(playback)} onClick={() => { setPlacementOpen(false); setMode(m); }}>{label}</button>
+                        <button key={m} data-short={{ auto: "기본", mask: "금지 칸", region: "선택", "add-region": "추가", "remove-region": "축소" }[m]} data-icon={{ auto: "↖", mask: "▨", region: "▧", "add-region": "+", "remove-region": "−" }[m]} title={label} className={"pill compact " + (mode === m ? "selected" : "")}
+                          disabled={busy || Boolean(playback)} onClick={() => { setPlacementOpen(false); setMode(m); }}><span className="tool-sr-only">{label}</span></button>
                       ))}
                       {!placementOpen && workspaceMode === "regions" && (draft.regions.some(region => !region.cells.length) || new Set(draft.regions.map(region => region.name)).size < draft.regions.length) && <button className="pill compact" data-testid="repair-regions" disabled={busy || Boolean(playback)} onClick={repairRegionList}>빈 영역·중복 이름 정리</button>}
                       {!placementOpen && workspaceMode === "regions" && <button className="pill compact" data-testid="delete-region" title="선택한 영역 자체만 삭제하고 화살은 유지합니다." disabled={busy || Boolean(playback) || Boolean(recovery) || !selectedRegion} onClick={deleteRegion}>영역 자체 삭제</button>}
+                      {(placementOpen || workspaceMode === "arrows") && <div className="tool-danger-group">
+                        <label className="clear-target-label">화살 삭제 대상
+                          <select aria-label="화살 삭제 대상" value={clearTargetId} disabled={busy || Boolean(playback) || Boolean(recovery)} onChange={event => setClearTargetId(event.target.value)}>
+                            <option value="">전체 보드</option>
+                            {draft.regions.map(region => <option key={region.id} value={region.id}>{region.name}</option>)}
+                            {clearTargetId && !draft.regions.some(region => region.id === clearTargetId) && <option value={clearTargetId} disabled>대상 다시 선택</option>}
+                          </select>
+                        </label>
+                        <button data-testid="clear-target-arrows" title="선택한 삭제 대상의 화살을 지웁니다. 영역은 몸체 전체가 포함된 화살만 삭제합니다." disabled={busy || Boolean(playback) || Boolean(recovery) || !draft.stage.arrows.length || Boolean(clearTargetId && !draft.regions.some(region => region.id === clearTargetId))} onClick={() => clearArrows(clearTargetId)}>화살 지우기</button>
+                      </div>}
                     </div>
                   </div>
-                  <div className="editor-tools" inert={Boolean(candidatePreview)}>
-                    <button data-testid="clear-board-arrows" disabled={busy || Boolean(playback) || Boolean(recovery) || !draft.stage.arrows.length} onClick={() => clearArrows(false)}>전체 화살 지우기</button>
-                    <button data-testid="clear-region-arrows" title="몸체 전체가 선택 영역 안에 있는 화살만 삭제합니다." disabled={busy || Boolean(playback) || Boolean(recovery) || !selectedRegion || !draft.stage.arrows.length} onClick={() => clearArrows(true)}>선택 영역 화살 지우기</button>
-                    <button
-                      disabled={!history.current.length || busy}
-                      onClick={() => undo()}
-                    >
-                      ↶ 실행 취소
-                    </button>
-                    <button
-                      disabled={!future.current.length || busy}
-                      onClick={() => undo(true)}
-                    >
-                      ↷ 다시 실행
-                    </button>
-                    <button onClick={() => setLinks(!links)}>
-                      {links ? "연결 숨기기" : "연결 보기"}
-                    </button>
-                    <label><input type="checkbox" aria-label="화살 ID 표시" checked={showArrowIds} onChange={event => setShowArrowIds(event.target.checked)} />화살 ID 표시</label>
-                    <span>
-                      {historyTick >= 0 && dirty
-                        ? "미저장 변경"
-                        : "저장된 상태"}
-                    </span>
-                  </div>
+                  </aside>
+                  <div className="board-surface">
                   {view === "analysis" && (
                     <div className="playback-controls">
                       <button
@@ -1186,11 +1260,11 @@ function App() {
                       </button>
                     </div>
                   )}
-                  {draft.placementGroups && <div className="board-status" data-testid="placement-phase-controls" aria-label="생성 단계 구분">
+                  {placementOpen && controlDraft?.placementGroups && <div className="board-status" data-testid="placement-phase-controls" aria-label="생성 단계 구분">
                     <div role="group" aria-label="생성 단계 보기">
-                      {(["all", "primary", "filler", "existing"] as const).map((phase, index) => <button key={phase} className={"pill compact " + (phaseView === phase ? "selected" : "")} aria-pressed={phaseView === phase} onClick={() => { setPhaseView(phase); setSelected(""); }}>{["전체", "1단계만", "2단계만", "기존 화살만"][index]}</button>)}
+                      {(["all", "primary", "filler", "existing"] as const).map((phase, index) => <button key={phase} className={"pill compact " + (phaseView === phase ? "selected" : "")} title={phase === "existing" ? "직전 생성 전에 있던 화살입니다. 더 이전의 생성 결과도 포함될 수 있습니다." : "직전 생성의 단계별 결과입니다."} aria-pressed={phaseView === phase} onClick={() => { setPhaseView(phase); setSelected(""); }}>{["전체", "1단계만", "2단계만", "생성 전 화살만"][index]}</button>)}
                     </div>
-                    {(["existing", "primary", "filler"] as const).map((phase, index) => <span key={phase} style={{ color: ["#ffffff", "#ffc466", "#54d7ef"][index] }}>{["기존", "1단계", "2단계"][index]} {board?.arrows.filter(arrow => (draft.placementGroups?.[arrow.id] ?? "existing") === phase).length}개</span>)}
+                    {(["existing", "primary", "filler"] as const).map((phase, index) => <span key={phase} style={{ color: ["#ffffff", "#ffc466", "#54d7ef"][index] }}>{["생성 전", "1단계", "2단계"][index]} {board?.arrows.filter(arrow => (controlDraft?.placementGroups?.[arrow.id] ?? "existing") === phase).length}개</span>)}
                     <span>전체 보기에서는 단계별 색상으로 구분합니다.</span>
                   </div>}
                   {candidatePreview && <div className="board-status" data-testid="candidate-preview">{candidatePreview.name} · 미리보기</div>}
@@ -1199,18 +1273,18 @@ function App() {
                       key={draft.stage.id}
                       stage={board!}
                       placementGroups={candidatePreview ? candidatePreview.draft.placementGroups : draft.placementGroups}
-                      phaseView={phaseView}
-                      phaseColors={true}
+                      phaseView={placementOpen ? phaseView : "all"}
+                      phaseColors={placementOpen}
                       regions={candidatePreview?.draft.regions ?? draft.regions}
                       regionId={regionId}
                       selected={selected}
                       mode={mode}
                       analysis={candidatePreview ? null : analysis}
                       free={candidatePreview ? [] : free}
-                      links={!candidatePreview && links && (!draft.placementGroups || phaseView === "all")}
+                      links={!candidatePreview && links && (!placementOpen || !draft.placementGroups || phaseView === "all")}
                       showArrowIds={showArrowIds}
                       busy={busy}
-                      editable={!candidatePreview && !playback && !recovery && !placementOpen && (!draft.placementGroups || phaseView === "all")}
+                      editable={!candidatePreview && !playback && !recovery && !placementOpen && (!placementOpen || !draft.placementGroups || phaseView === "all")}
                       regionPickOnly={!candidatePreview && placementOpen}
                       onSelect={setSelected}
                       onMode={(next) => setMode(workspaceMode === "regions" && next === "auto" ? "region" : next)}
@@ -1248,6 +1322,8 @@ function App() {
                       </strong>
                     </span>
                     <span>{playback ? "재생 상태" : "편집 원본"}</span>
+                  </div>
+                  </div>
                   </div>
                 </section>
                 {validation && validation.length === 0 && (
@@ -1289,6 +1365,7 @@ function App() {
                     <strong>{draft.stage.id}</strong>
                     <span>
                       {candidate?.name ?? "저장 전"}
+                      {candidateId && entry?.mainCandidateId === candidateId ? " · 대표" : ""}
                       {dirty ? " · 미저장" : ""}
                     </span>
                   </div>
@@ -1427,11 +1504,27 @@ function App() {
                       </p>
                       <button
                         className="pill bordered full"
+                        data-testid="reverse-arrow"
+                        disabled={busy || Boolean(playback) || Boolean(candidatePreview) || selectedArrow.cells.length < 2}
+                        title="모양과 길이를 유지하고 머리와 꼬리를 서로 바꿉니다."
+                        onClick={() => {
+                          void applyBoardEdit({
+                            kind: "reshape",
+                            source: draft.stage,
+                            arrowId: selectedArrow.id,
+                            cells: [...selectedArrow.cells].reverse(),
+                          });
+                        }}
+                      >
+                        머리·꼬리 뒤집기
+                      </button>
+                      <button
+                        className="pill bordered full"
                         disabled={busy || Boolean(playback)}
                         onClick={() => {
                           setMode("auto");
                           setMessage(
-                            "직선 몸통 드래그는 전체 이동, 머리·꼬리는 연장·축소, 코너는 간격 조절입니다. 어느 부분에서든 전체 이동하려면 우클릭 → 전체 이동을 사용하세요. Esc 취소",
+                            "직선 몸통 드래그는 전체 이동, 머리·꼬리는 연장·축소, 코너는 머리·꼬리를 고정하고 인접한 선만 이동합니다. Ctrl+코너 드래그는 연결부도 함께 움직이는 연쇄 이동입니다. 어느 부분에서든 전체 이동하려면 우클릭 → 전체 이동을 사용하세요. Esc 취소",
                           );
                         }}
                       >
@@ -1497,7 +1590,8 @@ function App() {
                   ) : (
                     <p>
                       보드에서 화살표를 선택하세요. 직선 몸통은 전체 이동,
-                      코너는 간격 조절, 머리·꼬리는 연장·축소입니다.
+                      코너는 인접한 선만 이동, Ctrl+코너 드래그는 연쇄 이동,
+                      머리·꼬리는 연장·축소입니다.
                     </p>
                   )}
                   {selectedRegion && (
@@ -1550,9 +1644,9 @@ function App() {
                           }
                           key={c.id}
                           onClick={() => { setPhaseView("all"); setSelected(""); setCandidatePreview({ id: c.id, name: c.name, draft: clone(c.versions.at(-1)!.draft) }); }}
-                          onDoubleClick={() => guarded(() => loadDraft(c.versions.at(-1)!.draft, c.id))}
+                          onDoubleClick={() => guarded(() => void selectRepresentative(c.id))}
                         >
-                          <strong>{c.name}</strong>
+                          <strong>{c.name}{entry.mainCandidateId === c.id ? " · 대표" : ""}</strong>
                           <span>
                             v{c.versions.length} · {c.versions.length}개 저장
                             이력
@@ -1561,7 +1655,7 @@ function App() {
                       ))}
                     </div>
                     {entry && entry.candidates.length > 0 && <div className="version-tools">
-                      <button className="pill primary" disabled={!candidatePreview || busy || saving} onClick={() => { if (candidatePreview) guarded(() => loadDraft(candidatePreview.draft, candidatePreview.id)); }}>후보 선택</button>
+                      <button className="pill primary" disabled={!candidatePreview || busy || saving} title="이 후보를 스테이지의 대표로 확정합니다." onClick={() => { if (candidatePreview) guarded(() => void selectRepresentative(candidatePreview.id)); }}>후보 선택</button>
                       <button className="pill bordered" disabled={busy || saving} onClick={() => void deleteCandidate(candidatePreview?.id ?? candidateId)}>후보 완전 삭제</button>
                       {candidatePreview && <button className="pill" onClick={() => setCandidatePreview(null)}>미리보기 종료</button>}
                     </div>}
@@ -1937,6 +2031,18 @@ function App() {
           <button className="pill bordered" onClick={() => setModal(null)}>
             작업으로 돌아가기
           </button>
+        </div>
+      </dialog>
+      <dialog ref={mergeDialogRef} data-testid="merge-arrows-dialog" onCancel={(event) => { event.preventDefault(); finishMerge(false); }}>
+        <div className="dialog-header"><h2>두 화살표를 합치시겠습니까?</h2></div>
+        {mergePrompt && <div className="padded">
+          <p>A ({mergePrompt.keptId}) ← B ({mergePrompt.removedId}) · 만난 점 {mergePrompt.cell.join(", ")}</p>
+          <p>A의 머리부터 만난 점까지, 만난 점부터 B의 꼬리까지 남겨 하나로 연결합니다. 나머지 점은 삭제됩니다.</p>
+          <p>실행 취소로 두 화살표를 복원할 수 있습니다.</p>
+        </div>}
+        <div className="dialog-footer">
+          <button className="pill bordered" onClick={() => finishMerge(false)}>합치기 취소</button>
+          <button className="pill primary" onClick={() => finishMerge(true)}>화살표 합치기</button>
         </div>
       </dialog>
       <dialog ref={pendingRef} onCancel={() => setPending(null)}>

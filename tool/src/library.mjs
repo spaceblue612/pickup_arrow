@@ -142,6 +142,10 @@ export function checkLibrary(library) {
       }
     }
   }
+  for (const stage of library.stages) {
+    if (stage.mainCandidateId !== undefined && stage.mainCandidateId !== null)
+      requireValue(stage.candidates.some(candidate => candidate.id === stage.mainCandidateId), "대표 후보가 후보 목록에 없습니다.");
+  }
   requireValue(
     JSON.stringify(library).length <= 32_000_000,
     "제작 데이터가 32MB 제한을 초과했습니다. 백업 후 분리가 필요합니다.",
@@ -197,6 +201,22 @@ export class LibraryStore {
       await readJson(path.join(this.directory, "library.json"), emptyLibrary()),
     );
   }
+  async lastSelection() {
+    let value;
+    try { value = await readJson(path.join(this.directory, "selection.json"), null); }
+    catch (error) { console.error("마지막 선택을 불러오지 못했습니다:", error.message); return null; }
+    return value && typeof value.stageId === "string" && (value.candidateId === null || typeof value.candidateId === "string") ? value : null;
+  }
+  rememberSelection(stageId, candidateId) {
+    const operation = this.queue.then(async () => {
+      const library = await this.load();
+      const stage = library.stages.find(item => item.id === stageId);
+      requireValue(stage && (candidateId === null || stage.candidates.some(item => item.id === candidateId)), "선택한 후보가 없습니다.");
+      await atomicJson(path.join(this.directory, "selection.json"), { stageId, candidateId });
+    });
+    this.queue = operation.catch(() => {});
+    return operation;
+  }
   deleteCandidate(stageId, candidateId, expectedRevision) {
     const operation = this.queue.then(async () => {
       const current = await this.load();
@@ -204,6 +224,7 @@ export class LibraryStore {
       const stage = current.stages.find(item => item.id === stageId);
       requireValue(stage && stage.candidates.some(item => item.id === candidateId), "삭제할 후보가 없습니다.");
       stage.candidates = stage.candidates.filter(item => item.id !== candidateId);
+      if (stage.mainCandidateId === candidateId) stage.mainCandidateId = stage.candidates[0]?.id ?? null;
       current.revision += 1;
       checkLibrary(current);
       await atomicJson(path.join(this.directory, "library.json"), current);

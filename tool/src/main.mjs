@@ -6,6 +6,7 @@ import {
   protocol,
   net,
   session,
+  screen,
 } from "electron";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,6 +20,7 @@ import {
 } from "./library.mjs";
 import { CoreHost } from "./core-host.mjs";
 import { validSettings } from "./editor-settings.mjs";
+import { restoreWindowState } from "./window-state.mjs";
 import { TEXT_SIZE } from "./text-size.mjs";
 
 protocol.registerSchemesAsPrivileged([
@@ -55,6 +57,7 @@ if (!ownsInstance) app.exit(0);
 let window,
   settings,
   closing = false;
+const windowStatePath = path.join(directory, "window-state.json");
 const settingsPath = path.join(directory, "settings.json");
 app.on("second-instance", () => {
   if (window) {
@@ -111,11 +114,21 @@ async function start() {
     (_contents, _permission, callback) => callback(false),
   );
   session.defaultSession.setPermissionCheckHandler(() => false);
+  let windowState;
+  if (!smoke) {
+    let saved;
+    try { saved = JSON.parse(await readFile(windowStatePath, "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") console.error("창 위치를 불러오지 못했습니다:", error.message); }
+    const primary = screen.getPrimaryDisplay();
+    const displays = [primary, ...screen.getAllDisplays().filter(display => display.id !== primary.id)];
+    windowState = restoreWindowState(saved, displays.map(display => display.workArea));
+  }
   window = new BrowserWindow({
     width: 1680,
     height: 1080,
     minWidth: 1100,
     minHeight: 740,
+    ...(windowState ? { x: windowState.x, y: windowState.y, width: windowState.width, height: windowState.height, minWidth: windowState.minWidth, minHeight: windowState.minHeight } : {}),
     show: !smoke,
     backgroundColor: "#0a0d3a",
     title: "Arrow Studio",
@@ -127,6 +140,7 @@ async function start() {
       backgroundThrottling: !smoke,
     },
   });
+  if (windowState?.maximized) window.maximize();
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.webContents.on("will-attach-webview", (event) =>
@@ -135,8 +149,19 @@ async function start() {
   handle("bootstrap", async () => {
     const recovery = await store.recovery();
     if (recovery !== null) checkDraft(recovery.draft);
+    let library = await store.load();
+    const lastSelection = await store.lastSelection();
+    let migrated = false;
+    for (const stage of library.stages) {
+      if (stage.mainCandidateId !== undefined) continue;
+      const remembered = stage.id === lastSelection?.stageId ? stage.candidates.find(candidate => candidate.id === lastSelection.candidateId) : undefined;
+      stage.mainCandidateId = remembered?.id ?? stage.candidates[0]?.id ?? null;
+      migrated = true;
+    }
+    if (migrated) library = await store.save(library, library.revision);
     return {
-      library: await store.load(),
+      library,
+      lastSelection,
       recovery,
       settings,
       directory,
@@ -148,6 +173,7 @@ async function start() {
       ),
     };
   });
+  handle("rememberSelection", (stageId, candidateId) => store.rememberSelection(stageId, candidateId));
   handle("save", (document, expected) => store.save(document, expected));
   handle("deleteCandidate", (stageId, candidateId, expected) => store.deleteCandidate(stageId, candidateId, expected));
   handle("recover", (value) => store.recover(value));
@@ -221,6 +247,9 @@ async function start() {
       }
       core.cancel();
       await store.queue;
+      try {
+        await atomicJson(windowStatePath, { ...window.getNormalBounds(), maximized: window.isMaximized() });
+      } catch (error) { console.error("창 위치를 저장하지 못했습니다:", error.message); }
       closing = true;
       window.close();
     })().catch((error) =>

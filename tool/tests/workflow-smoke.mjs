@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 
 export async function runWorkflow({
   window,
+  directory,
   store,
   page,
   until,
@@ -96,6 +99,17 @@ export async function runWorkflow({
       )
     ).includes("오른쪽"),
   );
+  await click("머리·꼬리 뒤집기");
+  await until(`document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('.arrow-inspector').textContent.includes('머리 10, 8')`);
+  assert.ok((await page(`document.querySelector('[data-testid="arrow-direction"]').textContent`)).includes("왼쪽"));
+  assert.equal(await page(`document.querySelector('main').dataset.selectedArrow`), selectedBefore);
+  await writeFile(path.join(directory, "reverse-arrow.png"), (await window.webContents.capturePage()).toPNG());
+  await click("↶ 실행 취소");
+  await until(`document.querySelector('.arrow-inspector').textContent.includes('머리 11, 8')`);
+  assert.ok((await page(`document.querySelector('[data-testid="arrow-direction"]').textContent`)).includes("오른쪽"));
+  await click("↷ 다시 실행");
+  await until(`document.querySelector('.arrow-inspector').textContent.includes('머리 10, 8')`);
+  await click("↶ 실행 취소");
   await click("↶ 실행 취소");
   assert.equal(
     await page(`document.querySelectorAll('svg.editable-board>g').length`),
@@ -230,11 +244,13 @@ export async function runWorkflow({
 
   await page(`document.querySelector('[data-testid="candidate-history"] summary').click()`);
   const beforeBrowse = await store.load();
+  const selectionBeforePreview = await store.lastSelection();
   await page(`document.querySelectorAll('.candidate-card')[0].click()`);
   await until(`!!document.querySelector('[data-testid="candidate-preview"]')`);
   assert.equal(await page(`document.querySelector('[data-testid="candidate-history"]').open`), true);
   await store.queue;
   assert.deepEqual(await store.load(), beforeBrowse, "preview never writes candidates");
+  assert.deepEqual(await store.lastSelection(), selectionBeforePreview, "preview never changes startup selection");
   await click("후보 선택");
   await until(`!document.querySelector('[data-testid="candidate-history"]').open && !document.querySelector('[data-testid="candidate-preview"]')`);
   await page(`document.querySelector('[data-testid="candidate-history"] summary').click()`);
@@ -263,6 +279,27 @@ export async function runWorkflow({
   const displayedStage = await page(`document.querySelector('h1').textContent`);
   assert.equal(afterDelete.stages.find(stage => stage.id === displayedStage).candidates.length, 1);
 
+  const representativeId = afterDelete.stages.find(stage => stage.id === displayedStage).mainCandidateId;
+  assert.equal(representativeId, afterDelete.stages.find(stage => stage.id === displayedStage).candidates[0].id);
+  await page(`([...document.querySelectorAll('.stage-row')].find(node=>node.textContent.includes('STAGE-001'))).click()`);
+  await until(`document.querySelector('h1')?.textContent==='STAGE-001'`);
+  await page(`([...document.querySelectorAll('.stage-row')].find(node=>node.textContent.includes(${JSON.stringify(displayedStage)}))).click()`);
+  await until(`document.querySelector('h1')?.textContent===${JSON.stringify(displayedStage)}`);
+  await until(`document.querySelector('.stage-identity')?.textContent.includes('후보 2')`);
+  const remaining = afterDelete.stages.find(stage => stage.id === displayedStage).candidates[0];
+  await store.queue;
+  assert.equal((await store.lastSelection()).candidateId, remaining.id);
+  const reloaded = new Promise(resolve => window.webContents.once("did-finish-load", resolve));
+  window.webContents.reload();
+  await reloaded;
+  await until(`document.querySelector('h1')?.textContent===${JSON.stringify(displayedStage)}`);
+  await until(`document.querySelector('.stage-identity')?.textContent.includes(${JSON.stringify(remaining.name)})`);
+  await click("자동 배치");
+  assert.equal(await page(`document.querySelector('.placement-settings input[aria-label="전체 보드 채움률"]').value`), "80");
+
+  const { runMerge } = await import("./merge-smoke.mjs");
+  await runMerge({ window, directory, page, until, click, drag, wholeMove });
+
   return {
     coreAnalysis: true,
     drawing: true,
@@ -271,5 +308,6 @@ export async function runWorkflow({
     explicitBranch: true,
     legalPlaybackSteps: 3,
     sameStageNoOp: true,
+    arrowMerge: true,
   };
 }

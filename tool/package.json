@@ -11,9 +11,10 @@
     "test:geometry": "node --test tests/arrow-geometry.test.mjs",
     "test:regions": "node --test tests/region-edge.test.mjs tests/region-move.test.mjs tests/region-names.test.mjs",
     "test:camera": "node --test tests/board-camera.test.mjs",
+    "test:placement": "node --test tests/placement-retry.test.mjs",
     "test:metrics": "node --test tests/board-metrics.test.mjs",
-    "test:settings": "node --test tests/editor-settings.test.mjs",
-    "test:library": "node --test tests/library.test.mjs",
+    "test:settings": "node --test tests/editor-settings.test.mjs tests/window-state.test.mjs",
+    "test:library": "node --test tests/library.test.mjs tests/representative.test.mjs",
     "test:core": "node --test tests/core-host.test.mjs tests/editor-core.test.mjs",
     "test:notice": "node --test tests/editor-notice.test.mjs",
     "test:smoke-runner": "node --test tests/smoke-selection.test.mjs",
@@ -24,6 +25,7 @@
     "smoke:placement": "npm run build && electron . --smoke-test=placement",
     "smoke:editing": "npm run build && electron . --smoke-test=editing",
     "smoke:all": "npm run build && electron . --smoke-test=all",
+    "start:x11": "npm run build && electron --ozone-platform=x11 .",
     "start:local-unsandboxed": "npm run build && electron --no-sandbox ."
   },
   "dependencies": {

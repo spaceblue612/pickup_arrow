@@ -58,15 +58,20 @@ export async function runBoardInteractions({
       alt = false,
       releaseAlt = false,
       pressAlt = false,
+      // This suite exercises the original chain spacing behavior. Default local
+      // editing and the modifier switch are covered in local-bend-smoke.mjs.
+      control = true,
     } = {},
   ) {
     const positions = [];
     for (const c of cells) positions.push(await screen(c));
     if (shift) await key("Shift");
     if (alt) await key("Alt");
+    if (control) await key("Control");
     await pointer("mouseDown", positions[0], "left", [
       ...(shift ? ["shift"] : []),
       ...(alt ? ["alt"] : []),
+      ...(control ? ["control"] : []),
     ]);
     if (releaseShift) await key("Shift", "keyUp");
     if (pressShift) await key("Shift");
@@ -77,6 +82,7 @@ export async function runBoardInteractions({
         "leftButtonDown",
         ...((shift && !releaseShift) || pressShift ? ["shift"] : []),
         ...((alt && !releaseAlt) || pressAlt ? ["alt"] : []),
+        ...(control ? ["control"] : []),
       ]);
     if (capture) {
       await delay(100);
@@ -95,6 +101,7 @@ export async function runBoardInteractions({
     await pointer("mouseUp", positions.at(-1));
     if (shift || pressShift) await key("Shift", "keyUp");
     if (alt || pressAlt) await key("Alt", "keyUp");
+    if (control) await key("Control", "keyUp");
     if (wait) {
       await until(
         `document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('.interactive-board').dataset.pending==='false'`,
@@ -1216,7 +1223,7 @@ export async function runBoardInteractions({
       [8, 5],
       [9, 5],
     ],
-    "left corner drag directly changes both gaps even when Shift is pressed later",
+    "Ctrl corner drag changes both gaps even when Shift is pressed later",
   );
   await undo();
   assert.deepEqual(await shape(), original, "one undo restores both groups");
@@ -1443,14 +1450,14 @@ export async function runBoardInteractions({
   const beforeFirstEdit = await viewport();
   const firstStart = await screen([6, 4]),
     firstEnd = await screen([7, 5]);
-  await pointer("mouseDown", firstStart);
-  await pointer("mouseMove", firstEnd, "left", ["leftButtonDown"]);
+  await pointer("mouseDown", firstStart, "left", ["control"]);
+  await pointer("mouseMove", firstEnd, "left", ["leftButtonDown", "control"]);
   assert.deepEqual(
     await viewport(),
     beforeFirstEdit,
     "the first edit hint never changes board size, scale, or camera",
   );
-  await pointer("mouseUp", firstEnd);
+  await pointer("mouseUp", firstEnd, "left", ["control"]);
   await until(
     `document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('.interactive-board').dataset.pending==='false'`,
   );

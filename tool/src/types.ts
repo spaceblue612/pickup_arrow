@@ -30,6 +30,7 @@ export type PlacementSettingsSnapshot = {
   automaticPlacement: boolean;
 };
 export type Draft = {
+  placementBatch?: { targetId: string; arrowIds: string[] };
   placementSettings?: PlacementSettingsSnapshot;
   placementGroups?: Record<string, PlacementPhase>;
   stage: Stage;
@@ -39,7 +40,7 @@ export type Draft = {
 };
 export type Version = { id: string; at: string; draft: Draft };
 export type Candidate = { id: string; name: string; versions: Version[] };
-export type Entry = { id: string; archived: boolean; candidates: Candidate[] };
+export type Entry = { mainCandidateId?: string | null; id: string; archived: boolean; candidates: Candidate[] };
 export type Library = { schema_version: 1; revision: number; stages: Entry[] };
 export type Recovery = {
   stageId: string;
@@ -74,12 +75,14 @@ export interface EditorAPI {
   bootstrap(): Promise<
     Result<{
       library: Library;
+      lastSelection: { stageId: string; candidateId: string | null } | null;
       recovery: Recovery | null;
       settings: Settings;
       directory: string;
       example: Stage;
     }>
   >;
+  rememberSelection(stageId: string, candidateId: string | null): Promise<Result<void>>;
   save(library: Library, expected: number): Promise<Result<Library>>;
   deleteCandidate(stageId: string, candidateId: string, expected: number): Promise<Result<Library>>;
   recover(recovery: Recovery | null): Promise<Result<void>>;

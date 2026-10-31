@@ -5,6 +5,8 @@ export const SMOKE_SUITES = Object.freeze([
   "layout",
   "placement",
   "editing",
+  "bends",
+  "rulers",
 ]);
 
 export function selectSmokeSuites(value = "startup") {

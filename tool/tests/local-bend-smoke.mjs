@@ -1,0 +1,101 @@
+import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import { moveBendLocally, resizeBend, deleteBend } from "../src/arrow-geometry.mjs";
+
+export async function runLocalBend({ window, directory, page, until, click, delay }) {
+  window.show(); window.focus();
+  await page(`document.querySelector('[aria-label="스테이지 추가"]').click()`);
+  await until(`!!document.querySelector('svg.editable-board')&&document.querySelectorAll('svg [data-arrow-id]').length===0`);
+  await click("화살 배치");
+  await click("기본 조작");
+  const shapes = () => page(`Array.from(document.querySelectorAll('svg [data-arrow-id] polyline')).map(line=>line.getAttribute('points').split(' ').map(p=>p.split(',').map(n=>Number(n)/40+.5)))`);
+  async function deleteCorner() {
+    const position = await page(`(()=>{const p=new DOMPoint((6-.5)*40,(3-.5)*40).matrixTransform(document.querySelector('svg.editable-board').getScreenCTM());return{x:Math.round(p.x),y:Math.round(p.y)}})()`);
+    window.webContents.sendInputEvent({ type: "mouseDown", ...position, button: "right", clickCount: 1 });
+    window.webContents.sendInputEvent({ type: "mouseUp", ...position, button: "right", clickCount: 1 });
+    await until(`!!document.querySelector('[role="menu"]')`);
+    await click("꺾임점 삭제");
+    await until(`document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('.interactive-board').dataset.pending==='false'`);
+  }
+  async function drag(points, { control = false, releaseControl = false, capture = false } = {}) {
+    const positions = await page(`(()=>{const m=document.querySelector('svg.editable-board').getScreenCTM();return ${JSON.stringify(points)}.map(c=>{const p=new DOMPoint((c[0]-.5)*40,(c[1]-.5)*40).matrixTransform(m);return{x:Math.round(p.x),y:Math.round(p.y)}})})()`);
+    if (control) window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Control" });
+    window.webContents.sendInputEvent({ type: "mouseDown", ...positions[0], button: "left", clickCount: 1, modifiers: control ? ["control"] : [] });
+    await delay(60);
+    if (releaseControl) window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Control" });
+    for (const position of positions.slice(1)) {
+      window.webContents.sendInputEvent({ type: "mouseMove", ...position, modifiers: ["leftButtonDown", ...(control && !releaseControl ? ["control"] : [])] });
+      await delay(80);
+    }
+    if (capture) await writeFile(path.join(directory, "local-bend-preview.png"), (await window.webContents.capturePage()).toPNG());
+    window.webContents.sendInputEvent({ type: "mouseUp", ...positions.at(-1), button: "left", modifiers: control && !releaseControl ? ["control"] : [] });
+    if (control && !releaseControl) window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Control" });
+    await delay(150);
+    await until(`document.querySelector('main').dataset.coreBusy==='false'&&document.querySelector('.interactive-board').dataset.pending==='false'`);
+  }
+  await drag([[2,1],[6,1],[6,3],[10,3],[10,6],[12,6]]);
+  const original = (await shapes())[0], index = original.findIndex(([x,y]) => x === 6 && y === 3);
+  await drag([[6,3],[5,3]], { capture: true });
+  assert.deepEqual((await shapes())[0], moveBendLocally(original, index, [-1,0]));
+  await click("↶ 실행 취소");
+  assert.deepEqual((await shapes())[0], original);
+  await click("↷ 다시 실행");
+  assert.deepEqual((await shapes())[0], moveBendLocally(original, index, [-1,0]));
+  await click("↶ 실행 취소");
+  await drag([[6,3],[6,4]]);
+  assert.deepEqual((await shapes())[0], moveBendLocally(original, index, [0,1]), "default drag uses local editing");
+  await click("↶ 실행 취소");
+  await drag([[6,3],[5,4]]);
+  assert.deepEqual((await shapes())[0], moveBendLocally(original, index, [-1,1]));
+  await click("↶ 실행 취소");
+  await drag([[6,3],[6,1]]);
+  const straightened = deleteBend(original, index);
+  assert.deepEqual((await shapes())[0], straightened, "collapsed segments straighten automatically");
+  await click("↶ 실행 취소");
+  await drag([[6,3],[10,1]]);
+  assert.deepEqual((await shapes())[0], straightened, "dragging to the opposite corner deletes redundant bends");
+  await click("↶ 실행 취소");
+  await deleteCorner();
+  assert.deepEqual((await shapes())[0], straightened, "menu deletion matches drag deletion");
+  await writeFile(path.join(directory, "delete-bend.png"), (await window.webContents.capturePage()).toPNG());
+  const straightCorner = straightened.findIndex(([x,y]) => x === 10 && y === 1);
+  const expanded = moveBendLocally(straightened, straightCorner, [-2,2]);
+  await drag([[10,1],[8,3]]);
+  assert.deepEqual((await shapes())[0], expanded, "diagonal dragging automatically inserts both elbows");
+  await writeFile(path.join(directory, "auto-bend.png"), (await window.webContents.capturePage()).toPNG());
+  await click("↶ 실행 취소");
+  assert.deepEqual((await shapes())[0], straightened);
+  await click("↷ 다시 실행");
+  assert.deepEqual((await shapes())[0], expanded);
+  await click("↶ 실행 취소");
+  await drag([[10,1],[8,3],[10,1]]);
+  assert.deepEqual((await shapes())[0], straightened, "retracing the diagonal drag restores the original shape");
+  await click("↶ 실행 취소");
+  assert.deepEqual((await shapes())[0], original);
+  await click("↷ 다시 실행");
+  assert.deepEqual((await shapes())[0], straightened);
+  await click("↶ 실행 취소");
+  await drag([[6,3],[1,3]]);
+  assert.deepEqual((await shapes())[0], original, "crossed segments remain invalid");
+  await drag([[6,3],[5,3]], { control: true, releaseControl: true });
+  assert.deepEqual((await shapes())[0], resizeBend(original, index, [-1,0]), "Ctrl selects chain movement and releasing it mid-drag preserves that mode");
+  await click("↶ 실행 취소");
+  await drag([[7,4],[9,4]]);
+  const beforeCollision = await shapes();
+  await drag([[6,3],[6,4]]);
+  assert.deepEqual(await shapes(), beforeCollision);
+  assert.ok(await page(`document.querySelector('[role="alert"]')?.textContent.includes('배치를 적용하지')`));
+  await click("↶ 실행 취소");
+  await drag([[8,1],[9,1]]);
+  const beforeDeleteCollision = await shapes();
+  await deleteCorner();
+  assert.deepEqual(await shapes(), beforeDeleteCollision, "deletion is rejected atomically on collision");
+  await click("↶ 실행 취소");
+  await deleteCorner();
+  await drag([[8,2],[8,3]]);
+  const beforeInsertCollision = await shapes();
+  await drag([[10,1],[8,3]]);
+  assert.deepEqual(await shapes(), beforeInsertCollision, "auto inserted elbows still reject collisions");
+  return { localBend: true, fixedEndpoints: true, undoRedo: true, defaultDrag: true, collision: true, deleteBend: true, collapseBend: true, autoBend: true };
+}
